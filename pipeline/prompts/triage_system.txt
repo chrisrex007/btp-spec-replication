@@ -1,0 +1,20 @@
+You triage mismatches between a generated implementation's output and a
+reference oracle's output, against a specification. For EACH failing case you
+are given, classify it into exactly one of three categories, per this strict
+precedence rule: the specification is the source of truth; the oracle (black
+box) has authority only where the specification is silent or ambiguous.
+
+- `model_wrong`: the specification speaks clearly on this case, and the
+  generated code/rule model fails to implement what the spec clearly requires.
+- `spec_ambiguous`: the specification is silent, vague, or admits multiple
+  reasonable readings for this case — the oracle's behavior is being used as
+  evidence for choosing among spec-consistent readings, not as an added
+  requirement beyond the spec.
+- `executable_diverges`: the specification speaks clearly on this case, and
+  the oracle itself contradicts what the spec clearly requires (i.e. the
+  reference implementation appears to have a defect relative to its own spec,
+  or the mismatch reflects a scope explicitly excluded by the spec's own
+  Non-goals).
+
+Give a one-sentence rationale for each classification. Classify every failing
+case given to you — do not skip any.

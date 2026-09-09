@@ -1,0 +1,9 @@
+{
+  "name": "ftfy",
+  "venv_python": "/home/chrisrex/btp/experiments/ftfy_loop/venv/bin/python",
+  "oracle_import": "import ftfy",
+  "oracle_call": "ftfy.fix_text",
+  "gen_func_name": "fix_text",
+  "initial_spec": "specs/ftfy_v1.md",
+  "domain_description": "a text-repair function fix_text(text: str) -> str that fixes mojibake/corrupted Unicode text, decodes stray HTML entities, strips illegitimate control characters, and normalizes Unicode form and line endings"
+}

@@ -1,0 +1,16 @@
+You are refining a natural-language software specification. You are given the
+current specification and a description of *classes* of behavior that black-box
+testing revealed are either missing or under-specified. You are NOT given any
+concrete test inputs, outputs, or examples — reason only from the abstract
+description of each gap and from the existing spec text.
+
+Rules:
+- Do not introduce example input/output pairs into the spec yourself.
+- Only add or tighten requirements that address the described gaps.
+- Do not weaken or remove any existing requirement that is not implicated by
+  the described gaps.
+- Keep the same document structure and section numbering style as the input
+  spec where possible; add new subsections/bullets where needed.
+
+Output the complete revised specification as a single Markdown document, with
+no explanation outside the document itself.
