@@ -26,14 +26,14 @@ The numbered tasks are ordered approximately from easier to harder:
 9. `09_casefold_unique_sort`
 10. `10_base64_decode`
 
-The first few tasks are useful ceiling/sanity controls. During token-constrained
-pilot experiments, a target that has no baseline failures does not need repair
-calls.
+During the pilot sweep, any target that reaches 100% baseline agreement on the
+pilot/development test pool should be removed from the active benchmark set.
+Such a target provides no failures for the feedback loop and is not useful for
+the core raw-vs-abstract repair comparison.
 
-For the later research evaluation, do not cherry-pick tasks using final held-out
-results. Decide whether a target enters the repair experiment using a separate
-pilot/development pool, while still reporting 100%-baseline targets as ceiling
-controls.
+This filtering must happen using only the pilot/development pool, before final
+held-out evaluation. Do not use final held-out scores to decide which targets
+remain.
 
 ## Test volume
 
