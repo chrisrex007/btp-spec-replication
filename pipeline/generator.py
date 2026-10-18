@@ -28,7 +28,6 @@ def generate_candidate(
     *,
     specification: str,
     input_format: str,
-    output_format: str,
     run_dir: str | Path,
     target: str,
     seed: int = 42,
@@ -42,8 +41,6 @@ def generate_candidate(
         + specification
         + "\n\n## Standard input format\n\n"
         + input_format
-        + "\n\n## Standard output format\n\n"
-        + output_format
         + "\n\nGenerate the complete candidate implementation."
     )
 
