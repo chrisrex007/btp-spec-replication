@@ -23,7 +23,6 @@ class BaselineTests(unittest.TestCase):
             reference_command=(sys.executable, "blackbox.py"),
             reference_cwd=root,
             input_format="One integer x followed by a newline.",
-            output_format="Print 2*x followed by a newline.",
             timeout_seconds=5.0,
         )
 
