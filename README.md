@@ -95,13 +95,21 @@ A benchmark task is described by JSON:
     "cwd": "."
   },
   "input_format": "One integer x followed by a newline.",
-  "output_format": "Print one integer followed by a newline.",
   "timeout_seconds": 2.0
 }
 ```
 
 Paths are resolved relative to the task JSON file. The reference command is run
-with the configured `cwd`.
+with the configured `cwd`. The synthesis/test-generation LLMs receive the
+natural-language specification and input-format description; they do not receive
+the hidden reference command.
+
+## Real-software pilot benchmarks
+
+The `experiments/real-software-v1` branch contains ten hidden-oracle command-line
+benchmarks under `benchmarks/01_...` through `benchmarks/10_...`. See
+`benchmarks/README.md` for ordering and the pilot-selection policy.
+
 
 ## Run artifacts
 
