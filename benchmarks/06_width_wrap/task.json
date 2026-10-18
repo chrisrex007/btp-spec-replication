@@ -1,0 +1,10 @@
+{
+  "name": "width_wrap",
+  "specification": "spec.md",
+  "reference": {
+    "command": ["fold", "-w", "8"],
+    "cwd": "."
+  },
+  "input_format": "Printable ASCII text plus newline characters; no tabs, carriage returns, backspaces, or other control characters.",
+  "timeout_seconds": 2.0
+}
