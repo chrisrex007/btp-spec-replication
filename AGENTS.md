@@ -23,7 +23,7 @@ algorithm reconstruction.
 The active development branch is:
 
 ```text
-feature/phases-3-5
+experiments/real-software-v1
 ```
 
 Do not merge it into `main` unless the user explicitly asks.
@@ -157,45 +157,37 @@ core experiment.
 
 ---
 
-## Important pending design cleanup
+## Task information boundary
 
-The current code/task schema still contains an `output_format` field.
+The separate `output_format` field has been removed.
 
-The intended design is to **remove it**.
+The LLM-visible task information is:
 
-Reason:
+- natural-language specification,
+- input-format description.
 
-- `input_format` is operational information needed to construct valid stdin.
-- output semantics belong to the natural-language specification itself.
-- providing a separate output-format description may leak extra behavioural
-  information and make an incomplete specification artificially easier.
+Output behaviour must be described by the specification itself.
 
-The desired task shape is therefore:
-
-```json
-{
-  "name": "double",
-  "specification": "spec.md",
-  "reference": {
-    "command": ["python3", "blackbox.py"],
-    "cwd": "."
-  },
-  "input_format": "One integer x followed by a newline.",
-  "timeout_seconds": 2.0
-}
-```
-
-Before building later phases, remove `output_format` consistently from:
-
-- benchmark task JSON,
-- `BenchmarkTask`,
-- candidate generation function arguments,
-- candidate-generation prompt construction,
-- tests/documentation that depend on it.
-
-Do not invent a replacement field unless the user asks for one.
+The reference command in `task.json` is harness-private and must never be
+included in synthesis or testcase-generation prompts. Task names should also stay
+neutral/descriptive so future prompt changes do not accidentally reveal utility
+names.
 
 ---
+
+## Pilot benchmark policy
+
+The current experiment branch contains ten real command-line software targets,
+ordered roughly from easy to hard. Easy 100%-baseline tasks may remain as ceiling
+controls, but token-constrained repair experiments should skip repair calls for
+targets with no development-set failures.
+
+Do not select targets using final held-out scores. Use a separate pilot/
+development pool for repair eligibility, then report held-out results for all
+targets.
+
+Large testcase pools are deferred. When added, generate them in batches, persist
+and deduplicate them, and reuse the same frozen pool across experimental arms.
 
 ## Repository layout
 
@@ -525,7 +517,7 @@ Current immediate state:
 
 1. Phases 0-5 are implemented and verified.
 2. OpenRouter end-to-end execution works.
-3. `output_format` removal is an approved pending cleanup.
+3. Ten real-software pilot benchmarks are being prepared on the experiment branch.
 4. Phase 6 (raw-feedback repair) has not yet been fully reviewed/approved for
    implementation in the current continuation flow.
 
