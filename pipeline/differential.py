@@ -75,6 +75,8 @@ def run_differential_case(
     test_input: str,
     *,
     timeout_seconds: float = 2.0,
+    reference_cwd: str | Path | None = None,
+    candidate_cwd: str | Path | None = None,
 ) -> DifferentialResult:
     """Run one testcase against both programs and classify the result."""
 
@@ -82,11 +84,13 @@ def run_differential_case(
         reference_command,
         test_input,
         timeout_seconds=timeout_seconds,
+        cwd=reference_cwd,
     )
     candidate = run_program(
         candidate_command,
         test_input,
         timeout_seconds=timeout_seconds,
+        cwd=candidate_cwd,
     )
     return compare_results(test_input, reference, candidate)
 
@@ -97,6 +101,8 @@ def run_differential_suite(
     test_inputs: Iterable[str],
     *,
     timeout_seconds: float = 2.0,
+    reference_cwd: str | Path | None = None,
+    candidate_cwd: str | Path | None = None,
 ) -> list[DifferentialResult]:
     """Run an iterable of testcases sequentially."""
 
@@ -106,6 +112,8 @@ def run_differential_suite(
             candidate_command,
             test_input,
             timeout_seconds=timeout_seconds,
+            reference_cwd=reference_cwd,
+            candidate_cwd=candidate_cwd,
         )
         for test_input in test_inputs
     ]
