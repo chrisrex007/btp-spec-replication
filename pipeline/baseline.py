@@ -83,7 +83,6 @@ def run_baseline(
         candidate = candidate_generator(
             specification=specification,
             input_format=task.input_format,
-            output_format=task.output_format,
             run_dir=run_dir,
             target=task.name,
             seed=seed,
