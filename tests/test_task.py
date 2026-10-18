@@ -19,7 +19,6 @@ class TaskTests(unittest.TestCase):
                     "cwd": ".",
                 },
                 "input_format": "one integer",
-                "output_format": "one integer",
                 "timeout_seconds": 1.5,
             }
             path = root / "task.json"
@@ -42,7 +41,6 @@ class TaskTests(unittest.TestCase):
                 reference_command=("program",),
                 reference_cwd=Path("."),
                 input_format="input",
-                output_format="output",
             )
 
 
