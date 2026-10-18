@@ -1,0 +1,64 @@
+"""Initial candidate generation from a natural-language specification."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Callable
+
+from .candidate import CandidateSource
+from .llm_runtime import logged_call
+
+
+PROMPT_PATH = Path(__file__).parent / "prompts" / "code_generation.txt"
+
+CANDIDATE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "language": {"type": "string", "enum": ["python", "cpp"]},
+        "filename": {"type": "string"},
+        "source": {"type": "string"},
+    },
+    "required": ["language", "filename", "source"],
+    "additionalProperties": False,
+}
+
+
+def generate_candidate(
+    *,
+    specification: str,
+    input_format: str,
+    output_format: str,
+    run_dir: str | Path,
+    target: str,
+    seed: int = 42,
+    call_fn: Callable[..., str] = logged_call,
+) -> CandidateSource:
+    """Generate one Python or C++ stdin/stdout candidate."""
+
+    system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
+    user_prompt = (
+        "## Specification\n\n"
+        + specification
+        + "\n\n## Standard input format\n\n"
+        + input_format
+        + "\n\n## Standard output format\n\n"
+        + output_format
+        + "\n\nGenerate the complete candidate implementation."
+    )
+
+    raw = call_fn(
+        run_dir=run_dir,
+        step="initial_code_generation",
+        target=target,
+        iteration=0,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        temperature=0.2,
+        max_tokens=8192,
+        seed=seed,
+        json_schema=CANDIDATE_SCHEMA,
+        schema_name="candidate_program",
+    )
+    data = json.loads(raw)
+    return CandidateSource.from_dict(data)
