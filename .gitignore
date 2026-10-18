@@ -1,5 +1,8 @@
 # Credentials - never commit
 .secrets/
+.env
+.env.*
+!.env.example
 
 # Virtual environments
 venv/
@@ -22,5 +25,3 @@ CLAUDE.md
 
 # Stray local state
 .webui_secret_key
-
-.env

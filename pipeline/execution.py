@@ -1,8 +1,8 @@
 """Process execution primitives for stdin/stdout benchmark programs.
 
-This module intentionally provides execution, not security isolation. It avoids
-shell invocation and enforces a wall-clock timeout, but a stronger sandbox or
-resource-limiting layer can be added later without changing callers.
+This module intentionally provides execution, not full security isolation. It
+avoids shell invocation, enforces a wall-clock timeout, and can run with a
+sanitized environment, but stronger OS-level sandboxing is still future work.
 """
 
 from __future__ import annotations
@@ -58,12 +58,16 @@ def run_program(
     timeout_seconds: float = 2.0,
     cwd: str | Path | None = None,
     env: Mapping[str, str] | None = None,
+    inherit_env: bool = True,
 ) -> ExecutionResult:
     """Run command once, feeding stdin_data to standard input.
 
     The function never uses a shell. Launch failures and timeouts are returned
     as data rather than raised, so one broken candidate cannot terminate an
     experiment harness.
+
+    Set inherit_env=False for generated/untrusted candidates so API keys and
+    other parent-process secrets are not passed through environment variables.
     """
 
     if not command:
@@ -72,7 +76,11 @@ def run_program(
         raise ValueError("timeout_seconds must be positive")
 
     cmd = tuple(str(part) for part in command)
-    run_env = None if env is None else {**os.environ, **dict(env)}
+    if inherit_env:
+        run_env = None if env is None else {**os.environ, **dict(env)}
+    else:
+        run_env = {} if env is None else dict(env)
+
     started = time.monotonic()
 
     try:
