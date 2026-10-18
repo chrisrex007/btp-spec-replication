@@ -1,20 +1,32 @@
+"""Minimal OpenAI-compatible chat-completions client for local LLM serving."""
+
+from __future__ import annotations
+
 import json
+import os
 import time
 import urllib.error
 import urllib.request
 
-# On the dev laptop this points at an SSH tunnel (8174); running ON gpu74 it
-# points straight at the local vLLM server (8100), which removes the tunnel --
-# and every failure mode that came with it -- from the loop entirely.
-import os
 
-ENDPOINT = os.environ.get("BTP_LLM_ENDPOINT",
-                          "http://127.0.0.1:8174/v1/chat/completions")
-MODEL = "qwen2.5-32b"
+ENDPOINT = os.environ.get(
+    "BTP_LLM_ENDPOINT",
+    "http://127.0.0.1:8174/v1/chat/completions",
+)
+MODEL = os.environ.get("BTP_MODEL", "qwen2.5-32b")
 
 
-def call(system_prompt: str, user_prompt: str, temperature: float = 0.2, max_tokens: int = 4096,
-         seed: int = 42, json_schema: dict = None, schema_name: str = "response") -> str:
+def call(
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float = 0.2,
+    max_tokens: int = 4096,
+    seed: int = 42,
+    json_schema: dict | None = None,
+    schema_name: str = "response",
+) -> str:
+    """Call an OpenAI-compatible /v1/chat/completions endpoint."""
+
     payload = {
         "model": MODEL,
         "messages": [
@@ -30,22 +42,24 @@ def call(system_prompt: str, user_prompt: str, temperature: float = 0.2, max_tok
             "type": "json_schema",
             "json_schema": {"name": schema_name, "schema": json_schema},
         }
-    req = urllib.request.Request(
+
+    request = urllib.request.Request(
         ENDPOINT,
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    # The endpoint is reached through an SSH tunnel that can drop mid-run, which
-    # would otherwise kill a multi-hour unattended loop on one transient error.
-    last_err = None
+
+    last_error: Exception | None = None
     for attempt in range(4):
         try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
+            with urllib.request.urlopen(request, timeout=300) as response:
+                body = json.loads(response.read().decode("utf-8"))
             return body["choices"][0]["message"]["content"]
-        except urllib.error.URLError as e:
-            last_err = e
+        except urllib.error.URLError as exc:
+            last_error = exc
             if attempt < 3:
                 time.sleep(5 * (attempt + 1))
-    raise last_err
+
+    assert last_error is not None
+    raise last_error
