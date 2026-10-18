@@ -1,7 +1,7 @@
 # Credentials - never commit
 .secrets/
 
-# Virtual environments - rebuildable, ~127 MB
+# Virtual environments
 venv/
 */venv/
 **/venv/
@@ -9,13 +9,16 @@ venv/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Local assistant/editor state
 .claude/
 CLAUDE.md
-*.sh
+
+# Generated experiment output
+/runs/
 
 # Local scratch
 *.tgz
 
-# Stray local state - not project files
+# Stray local state
 .webui_secret_key
-.claude/
