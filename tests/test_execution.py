@@ -73,6 +73,30 @@ class DifferentialTests(unittest.TestCase):
         self.assertEqual(result.status, ComparisonStatus.CANDIDATE_ERROR)
         self.assertEqual(result.candidate.exit_code, 3)
 
+    def test_separate_working_directories_are_supported(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            reference_dir = root / "reference"
+            candidate_dir = root / "candidate"
+            reference_dir.mkdir()
+            candidate_dir.mkdir()
+            (reference_dir / "program.py").write_text("print('same')\n", encoding="utf-8")
+            (candidate_dir / "program.py").write_text("print('same')\n", encoding="utf-8")
+
+            result = run_differential_case(
+                [sys.executable, "program.py"],
+                [sys.executable, "program.py"],
+                "",
+                timeout_seconds=5.0,
+                reference_cwd=reference_dir,
+                candidate_cwd=candidate_dir,
+            )
+
+        self.assertTrue(result.passed)
+
 
 if __name__ == "__main__":
     unittest.main()
