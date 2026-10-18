@@ -91,6 +91,12 @@ def run_differential_case(
         test_input,
         timeout_seconds=timeout_seconds,
         cwd=candidate_cwd,
+        env={
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "PYTHONIOENCODING": "utf-8",
+        },
+        inherit_env=False,
     )
     return compare_results(test_input, reference, candidate)
 

@@ -1,5 +1,7 @@
+import os
 import sys
 import unittest
+from unittest.mock import patch
 
 from pipeline.differential import ComparisonStatus, run_differential_case
 from pipeline.execution import run_program
@@ -36,6 +38,20 @@ class ExecutionTests(unittest.TestCase):
         self.assertFalse(result.succeeded)
         self.assertIsNotNone(result.launch_error)
         self.assertIsNone(result.exit_code)
+
+    def test_environment_can_be_sanitized(self):
+        with patch.dict(os.environ, {"BTP_LLM_API_KEY": "should-not-leak"}):
+            result = run_program(
+                [
+                    sys.executable,
+                    "-c",
+                    "import os; print(os.getenv('BTP_LLM_API_KEY', 'missing'))",
+                ],
+                "",
+                inherit_env=False,
+            )
+        self.assertTrue(result.succeeded)
+        self.assertEqual(result.stdout, "missing\n")
 
 
 class DifferentialTests(unittest.TestCase):
@@ -83,8 +99,12 @@ class DifferentialTests(unittest.TestCase):
             candidate_dir = root / "candidate"
             reference_dir.mkdir()
             candidate_dir.mkdir()
-            (reference_dir / "program.py").write_text("print('same')\n", encoding="utf-8")
-            (candidate_dir / "program.py").write_text("print('same')\n", encoding="utf-8")
+            (reference_dir / "program.py").write_text(
+                "print('same')\n", encoding="utf-8"
+            )
+            (candidate_dir / "program.py").write_text(
+                "print('same')\n", encoding="utf-8"
+            )
 
             result = run_differential_case(
                 [sys.executable, "program.py"],
