@@ -177,14 +177,16 @@ names.
 
 ## Pilot benchmark policy
 
-The current experiment branch contains ten real command-line software targets,
-ordered roughly from easy to hard. Easy 100%-baseline tasks may remain as ceiling
-controls, but token-constrained repair experiments should skip repair calls for
-targets with no development-set failures.
+The current experiment branch starts with ten real command-line software
+targets, ordered roughly from easy to hard.
 
-Do not select targets using final held-out scores. Use a separate pilot/
-development pool for repair eligibility, then report held-out results for all
-targets.
+If a target reaches 100% baseline agreement on the pilot/development test pool,
+delete that target from the active benchmark set. The project is specifically
+interested in tasks where failures exist and feedback can potentially improve
+the candidate.
+
+Never use final held-out scores to decide which targets remain. Filtering must
+be based only on the pilot/development pool before held-out evaluation.
 
 Large testcase pools are deferred. When added, generate them in batches, persist
 and deduplicate them, and reuse the same frozen pool across experimental arms.
