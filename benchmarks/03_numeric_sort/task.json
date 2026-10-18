@@ -1,0 +1,10 @@
+{
+  "name": "numeric_sort",
+  "specification": "spec.md",
+  "reference": {
+    "command": ["env", "LC_ALL=C", "sort", "-n"],
+    "cwd": "."
+  },
+  "input_format": "Zero or more newline-terminated ASCII lines, each matching -?[0-9]+.",
+  "timeout_seconds": 2.0
+}
