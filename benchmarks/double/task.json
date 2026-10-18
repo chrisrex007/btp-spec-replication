@@ -6,6 +6,5 @@
     "cwd": "."
   },
   "input_format": "One integer x followed by a newline.",
-  "output_format": "Print the integer 2*x followed by a newline.",
   "timeout_seconds": 2.0
 }
