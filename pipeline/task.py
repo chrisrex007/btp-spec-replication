@@ -18,7 +18,6 @@ class BenchmarkTask:
     reference_command: tuple[str, ...]
     reference_cwd: Path
     input_format: str
-    output_format: str
     timeout_seconds: float = 2.0
 
     def __post_init__(self) -> None:
@@ -30,8 +29,6 @@ class BenchmarkTask:
             raise ValueError("reference command must not be empty")
         if not self.input_format.strip():
             raise ValueError("input_format must not be empty")
-        if not self.output_format.strip():
-            raise ValueError("output_format must not be empty")
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
 
@@ -51,7 +48,6 @@ class BenchmarkTask:
             reference_command=tuple(str(x) for x in reference["command"]),
             reference_cwd=reference_cwd,
             input_format=data["input_format"],
-            output_format=data["output_format"],
             timeout_seconds=float(data.get("timeout_seconds", 2.0)),
         )
 
@@ -67,6 +63,5 @@ class BenchmarkTask:
                 "cwd": str(self.reference_cwd),
             },
             "input_format": self.input_format,
-            "output_format": self.output_format,
             "timeout_seconds": self.timeout_seconds,
         }
