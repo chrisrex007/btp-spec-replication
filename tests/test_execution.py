@@ -90,6 +90,7 @@ class DifferentialTests(unittest.TestCase):
                 [sys.executable, "program.py"],
                 [sys.executable, "program.py"],
                 "",
+                timeout_seconds=5.0,
                 reference_cwd=reference_dir,
                 candidate_cwd=candidate_dir,
             )
