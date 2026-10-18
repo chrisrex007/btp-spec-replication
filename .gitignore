@@ -22,3 +22,5 @@ CLAUDE.md
 
 # Stray local state
 .webui_secret_key
+
+.env
