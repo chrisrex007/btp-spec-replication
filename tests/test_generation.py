@@ -24,7 +24,6 @@ class GenerationTests(unittest.TestCase):
             candidate = generate_candidate(
                 specification="Double an integer.",
                 input_format="One integer.",
-                output_format="One integer.",
                 run_dir=tmp,
                 target="double",
                 call_fn=fake_call,
@@ -34,6 +33,7 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(candidate.filename, "main.cpp")
         self.assertIn("int main", candidate.source)
         self.assertEqual(captured["step"], "initial_code_generation")
+        self.assertNotIn("Standard output format", captured["user_prompt"])
         self.assertEqual(
             captured["json_schema"]["properties"]["language"]["enum"],
             ["python", "cpp"],
