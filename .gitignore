@@ -1,5 +1,8 @@
 # Credentials - never commit
 .secrets/
+.env
+.env.*
+!.env.example
 
 # Virtual environments
 venv/
