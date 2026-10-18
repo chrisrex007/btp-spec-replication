@@ -44,7 +44,7 @@ def logged_call(
         step=step,
         target=target,
         iteration=iteration,
-        model=llm_client.MODEL,
+        model=llm_client.get_model(),
         seed=seed,
         temperature=temperature,
         max_tokens=max_tokens,
