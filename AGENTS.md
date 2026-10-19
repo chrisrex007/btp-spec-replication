@@ -380,6 +380,99 @@ The generated candidate must never inherit `BTP_LLM_API_KEY`.
 
 ---
 
+## PARAM Shakti GPU environment
+
+The user now has approved access to IIT Kharagpur's **PARAM Shakti** HPC system.
+Hosted OpenRouter was useful for smoke testing, but the intended next step is to
+run an open-weight model on PARAM Shakti and point this repository at its
+OpenAI-compatible endpoint.
+
+Official system guidance relevant to this project:
+
+- Cluster login host: `paramshakti.iitkgp.ac.in`.
+- Off-campus SSH access uses port `4422`.
+- Workload scheduling is through Slurm.
+- Heavy computation and model serving must run on allocated compute/GPU nodes,
+  not on the login node.
+- GPU jobs use the GPU partition and request GPUs through Slurm, e.g.
+  `--gres=gpu:1` (or more only when actually needed).
+- The documented GPU-node range is `gpu001` through `gpu022`.
+- Use `/home/<username>/` primarily for persistent software/configuration.
+- Use `/scratch/<username>/` for model weights, caches, datasets, experiment
+  data, and other large project files.
+- The documented scratch allocation has a 2 TB soft quota, a 60-day retention
+  policy, and is not backed up. Important results must therefore be copied to a
+  persistent location.
+- Inspect the live module/software environment with `module avail` rather than
+  assuming a particular CUDA/PyTorch version.
+- Slurm fair-share/history affects scheduling priority, so do not hold GPU
+  allocations idle unnecessarily.
+
+Do not assume the exact GPU model or VRAM from the public documentation. Before
+choosing the serving model, inspect the actual allocated node/GPU using the live
+cluster environment (for example `nvidia-smi` from within a GPU allocation).
+
+### Intended serving architecture
+
+The preferred architecture is:
+
+```text
+laptop / Codespace
+        |
+        | SSH tunnel
+        v
+PARAM Shakti login node
+        |
+        | Slurm allocation
+        v
+GPU compute node
+        |
+        | vLLM (OpenAI-compatible server)
+        v
+open-weight model
+```
+
+The existing pipeline should remain unchanged at the application layer. Point it
+at the forwarded model server with:
+
+```env
+BTP_LLM_ENDPOINT=http://127.0.0.1:<forwarded-port>/v1/chat/completions
+BTP_MODEL=<served-model-name>
+```
+
+A local vLLM endpoint does not require `BTP_LLM_API_KEY` unless authentication
+is deliberately added.
+
+### PARAM Shakti implementation rules
+
+When continuing this setup:
+
+1. First inspect the live Slurm partitions, GPU availability, GPU model/VRAM,
+   module versions, and account limits.
+2. Choose an open-weight model only after the actual GPU memory is known.
+3. Prefer vLLM because the repository already speaks the OpenAI-compatible
+   chat-completions API.
+4. Keep large Hugging Face/model caches on scratch, not in the repository and
+   not unnecessarily in home.
+5. Start vLLM only inside a Slurm GPU allocation/job.
+6. Expose the compute-node server through SSH tunnelling rather than opening a
+   public endpoint.
+7. Keep generated candidate execution separate from model-serving credentials
+   and cluster secrets.
+8. Do not commit usernames, passwords, SSH private keys, access tokens, cluster
+   secrets, or account-specific allocation identifiers.
+9. Persist experiment metadata/results needed for the thesis outside scratch
+   before its retention window can remove them.
+10. Avoid changing the research pipeline merely to accommodate the cluster if a
+    tunnel to the existing OpenAI-compatible interface is sufficient.
+
+The exact Slurm script, model choice, tensor-parallel configuration,
+quantization, context length, and vLLM flags are intentionally **not fixed yet**.
+They must be chosen after inspecting the user's actual allocated GPU hardware
+and current cluster software.
+
+---
+
 ## Run artifacts
 
 Generated experiment runs are written under:
@@ -499,7 +592,7 @@ Use feature branches for implementation.
 The current continuation branch is:
 
 ```text
-feature/phases-3-5
+experiments/real-software-v1
 ```
 
 Do not push changes directly to `main` unless the user explicitly requests it.
@@ -519,8 +612,9 @@ Current immediate state:
 
 1. Phases 0-5 are implemented and verified.
 2. OpenRouter end-to-end execution works.
-3. Ten real-software pilot benchmarks are being prepared on the experiment branch.
-4. Phase 6 (raw-feedback repair) has not yet been fully reviewed/approved for
+3. PARAM Shakti GPU access has been approved; local open-weight model serving is the next infrastructure step.
+4. Ten real-software pilot benchmarks are being prepared on the experiment branch.
+5. Phase 6 (raw-feedback repair) has not yet been fully reviewed/approved for
    implementation in the current continuation flow.
 
 The next agent should therefore first respect any new instruction from the user.
