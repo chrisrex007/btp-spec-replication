@@ -4,17 +4,21 @@ Research infrastructure for synthesizing a program from a natural-language
 specification and measuring its behavioural agreement with a black-box reference
 implementation.
 
-The current repository implements **Phases 0–5**: a complete one-shot baseline
-with stdin/stdout programs. It does **not** implement feedback-driven repair yet.
+The repository includes the Phases 0–5 one-shot baseline and a separate
+resumable offline batch runner with raw failure-feedback repair.
+
+GPU testing is currently paused. The source checkpoint and deferred acceptance
+checks are recorded in [the testing stop](docs/checkpoints/raw-feedback-v1.md).
+The [remaining-work roadmap](docs/ROADMAP.md) groups continued development into
+three further branches (four work branches including the existing checkpoint).
 
 ## Requirements
 
 - Python 3.10+
 - `g++` with C++20 support if the LLM chooses C++
-- An OpenAI-compatible `/v1/chat/completions` endpoint with structured-output
-  support
+- vLLM 0.7.3 in the PARAM Shakti Slurm environment for offline batched runs
 
-## Fastest first run: OpenRouter + Codespaces
+## Existing one-task baseline
 
 The repository includes a ready-to-run smoke-test benchmark at:
 
@@ -25,25 +29,14 @@ benchmarks/double/
 └── task.json
 ```
 
-Copy the example environment file:
+The `.env.example` contains optional settings for the existing online baseline
+client. The offline Slurm runner uses its `--model` option and does not read
+`BTP_LLM_ENDPOINT`.
 
-```bash
-cp .env.example .env
-```
-
-Then edit `.env` and set your own OpenRouter key:
-
-```env
-BTP_LLM_ENDPOINT=https://openrouter.ai/api/v1/chat/completions
-BTP_LLM_API_KEY=your-key-here
-BTP_MODEL=openrouter/free
-BTP_HTTP_REFERER=https://github.com/chrisrex007/btp-spec-replication
-BTP_X_TITLE=BTP Spec Replication
-```
-
-The pipeline loads the repository-root `.env` automatically and never
-overrides variables that are already present in the shell/Codespaces
-environment. `.env` is ignored by Git.
+The baseline continues to use the OpenAI-compatible client. Configure a
+compatible endpoint in `.env` only when running that baseline. The PARAM Shakti
+workflow below uses the offline vLLM Python API directly and does not use an
+HTTP server or tunnel.
 
 Run the complete Phase 0–5 baseline:
 
@@ -67,20 +60,21 @@ black-box vs candidate differential execution
 results + failures + baseline accuracy
 ```
 
-For OpenRouter, the client adds the Bearer token automatically. The
-`HTTP-Referer` and `X-Title` headers are optional. Structured requests also
-ask OpenRouter to route only through providers that honor the required request
-parameters.
+For this baseline, the client loads repository-root `.env` without overriding
+variables already set in the shell. `.env` is ignored by Git.
 
-## Local vLLM
+## PARAM Shakti offline batch experiments
 
-The same code still works without an API key:
-
-```bash
-export BTP_LLM_ENDPOINT=http://127.0.0.1:8174/v1/chat/completions
-export BTP_MODEL=qwen2.5-32b
-unset BTP_LLM_API_KEY
-```
+Run [`pipeline.offline_batch`](pipeline/offline_batch.py) for batched candidate
+generation, testcase generation, differential testing, and iterative raw
+failure-feedback repair. It loads one vLLM `LLM` instance per job, batches
+requests across benchmark tasks, and checkpoints progress for resumption.
+Follow [the PARAM Shakti setup guide](hpc/paramshakti/README.md) for the Slurm
+script and configuration. The selected Qwen2.5-7B-Instruct FP16 model uses two
+V100 GPUs on one node. Inference runs directly through vLLM's Python API; no
+HTTP server or tunnel is started. Model files use scratch; experiment artifacts
+default to persistent home storage. All cluster interaction remains
+user-mediated.
 
 ## Task configuration
 

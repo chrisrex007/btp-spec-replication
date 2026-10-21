@@ -24,6 +24,26 @@ CANDIDATE_SCHEMA = {
 }
 
 
+def candidate_messages(*, specification: str, input_format: str) -> tuple[str, str]:
+    """Build the prompts shared by hosted and offline candidate generation."""
+
+    system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
+    user_prompt = (
+        "## Specification\n\n"
+        + specification
+        + "\n\n## Standard input format\n\n"
+        + input_format
+        + "\n\nGenerate the complete candidate implementation."
+    )
+    return system_prompt, user_prompt
+
+
+def parse_candidate_response(raw: str) -> CandidateSource:
+    """Parse and validate a structured candidate response."""
+
+    return CandidateSource.from_dict(json.loads(raw))
+
+
 def generate_candidate(
     *,
     specification: str,
@@ -35,13 +55,9 @@ def generate_candidate(
 ) -> CandidateSource:
     """Generate one Python or C++ stdin/stdout candidate."""
 
-    system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
-    user_prompt = (
-        "## Specification\n\n"
-        + specification
-        + "\n\n## Standard input format\n\n"
-        + input_format
-        + "\n\nGenerate the complete candidate implementation."
+    system_prompt, user_prompt = candidate_messages(
+        specification=specification,
+        input_format=input_format,
     )
 
     raw = call_fn(
@@ -57,5 +73,4 @@ def generate_candidate(
         json_schema=CANDIDATE_SCHEMA,
         schema_name="candidate_program",
     )
-    data = json.loads(raw)
-    return CandidateSource.from_dict(data)
+    return parse_candidate_response(raw)

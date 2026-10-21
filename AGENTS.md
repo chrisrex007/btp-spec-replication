@@ -20,15 +20,23 @@ algorithm reconstruction.
 
 ## Current project state
 
-The active development branch is:
+The preserved pre-comparison implementation branch is:
 
 ```text
-experiments/raw-feedback
+experiments/real-software-v1
 ```
 
-Do not merge it into `main` unless the user explicitly asks.
+GPU testing is paused as of 2026-10-21. The tag
+`test-stop/raw-feedback-v1` preserves the offline raw-feedback implementation
+for later testing; it is not a validation claim. See
+`docs/checkpoints/raw-feedback-v1.md` for the deferred GPU checklist.
 
-`experiments/real-software-v1` is the frozen baseline testing stop point. This branch continues implementation with the raw-feedback scope defined in `ROADMAP.md`; real-model/GPU testing remains deferred.
+Continue planning on `experiments/comparison-foundation`. The proposed roadmap
+in `docs/ROADMAP.md` uses four work branches total, including the preserved
+branch. GPU testing does not block local development; keep local unit checks.
+Review each phase and material research choices before implementing it.
+
+Do not merge it into `main` unless the user explicitly asks.
 
 Phases 0-5 are implemented and have been exercised successfully in GitHub
 Codespaces.
@@ -117,15 +125,11 @@ The baseline intentionally contains **no repair loop**.
 
 ## Planned research comparison
 
-The intended final comparison is:
+The intended main comparison is:
 
 1. no-feedback/spec-only baseline,
 2. raw failure feedback,
-3. abstract failure feedback,
-4. path/trace feedback.
-
-The three feedback-loop approaches are therefore **raw**, **abstract**, and
-**path/trace**.
+3. abstract failure feedback.
 
 Raw feedback is expected to contain:
 
@@ -135,10 +139,6 @@ Raw feedback is expected to contain:
 
 Abstract feedback will be produced by an LLM that groups/summarizes failure
 patterns into behavioural classes.
-
-Path/trace feedback adds a compact execution path from the **generated
-candidate** for failing development inputs. The reference program remains
-black-box; never assume or expose an internal reference execution path.
 
 When repair is implemented, repair the **current candidate directly**:
 
@@ -162,9 +162,8 @@ Do **not** reintroduce the old methodology of:
 
 Those were intentionally removed from the repository.
 
-Path/trace feedback is part of the final core experiment, alongside raw and
-abstract feedback. It is implemented later in the `experiments/feedback-variants`
-branch; exact Python/C++ tracing mechanisms must be reviewed there.
+Execution-trace feedback is a possible later extension, not part of the current
+core experiment.
 
 ---
 
@@ -218,6 +217,9 @@ benchmarks/
 pipeline/
   __init__.py
   baseline.py
+  offline_batch.py
+  offline_runtime.py
+  repair.py
   builder.py
   candidate.py
   differential.py
@@ -328,11 +330,20 @@ Typical command:
 python -m pipeline.baseline benchmarks/double/task.json --tests 10
 ```
 
+### `pipeline/offline_batch.py` / `pipeline/offline_runtime.py`
+
+The resumable multi-task runner uses one in-process vLLM `LLM` instance and
+`SamplingParams` batches for initial generation, testcase generation, and raw
+failure-feedback repair. It checkpoints each inference response and experiment
+stage to persistent output storage. Benchmark builds and differential suites
+run concurrently up to the configured worker count. Do not replace this path
+with an HTTP server, Ray, or distributed serving unless the user changes scope.
+
 ### `pipeline/llm_client.py`
 
 OpenAI-compatible `/v1/chat/completions` client.
 
-Supports local vLLM and authenticated hosted endpoints such as OpenRouter.
+Supports local vLLM through an OpenAI-compatible endpoint.
 
 Configuration is via environment variables:
 
@@ -340,8 +351,6 @@ Configuration is via environment variables:
 BTP_LLM_ENDPOINT
 BTP_LLM_API_KEY
 BTP_MODEL
-BTP_HTTP_REFERER
-BTP_X_TITLE
 ```
 
 Never hard-code or commit API keys.
@@ -369,34 +378,10 @@ This logging is important for research reproducibility.
 
 ---
 
-## OpenRouter / local model setup
-
-A committed `.env.example` is provided.
-
-For OpenRouter:
-
-```env
-BTP_LLM_ENDPOINT=https://openrouter.ai/api/v1/chat/completions
-BTP_LLM_API_KEY=
-BTP_MODEL=openrouter/free
-BTP_HTTP_REFERER=https://github.com/chrisrex007/btp-spec-replication
-BTP_X_TITLE=BTP Spec Replication
-```
-
-For local vLLM, no API key is required.
-
-Never print, log, commit, or copy real API keys into repository files.
-
-The generated candidate must never inherit `BTP_LLM_API_KEY`.
-
----
-
 ## PARAM Shakti GPU environment
 
 The user now has approved access to IIT Kharagpur's **PARAM Shakti** HPC system.
-Hosted OpenRouter was useful for smoke testing, but the intended next step is to
-run an open-weight model on PARAM Shakti and point this repository at its
-OpenAI-compatible endpoint.
+The intended setup is batched offline vLLM inference within a Slurm job.
 
 Official system guidance relevant to this project:
 
@@ -411,9 +396,26 @@ Official system guidance relevant to this project:
 - Use `/home/<username>/` primarily for persistent software/configuration.
 - Use `/scratch/<username>/` for model weights, caches, datasets, experiment
   data, and other large project files.
-- The documented scratch allocation has a 2 TB soft quota, a 60-day retention
-  policy, and is not backed up. Important results must therefore be copied to a
-  persistent location.
+- Home quota is up to 50 GB; scratch quota is up to 2 TB (soft limit).
+- Scratch data is not backed up and has a 30-day default retention limit.
+  Important results must be copied to a persistent home/project location.
+- Submit Slurm jobs only while the current working directory is under `$SCRATCH`
+  (or the user's corresponding scratch path). Submission from `/home` can
+  trigger account restrictions. Keep Slurm output files in scratch as well.
+- If the cluster sends an account-lockout warning, stop submitting/logging in
+  and follow its support-ticket/unlock instructions. Never retry to test access.
+- Login nodes are for simple tasks only. All CPU/memory-intensive work must run
+  in scheduled compute-node jobs.
+- PARAM Shakti is for academic research. Users are responsible for software
+  and model license compliance, backups, and protection of generated data.
+- Publications, presentations, thesis, webpages, and similar outputs must
+  acknowledge PARAM Shakti and NSM. The user-provided acknowledgement template
+  is recorded below; the user should also inform PARAM Shakti administration
+  about outcomes for annual reporting/documentation.
+- Users must not share passwords or allow multiple people to use the same
+  account. A project adviser must already have a PARAM Shakti account before
+  requesting group-member accounts.
+- Check `hpc.iitkgp.ac.in` and relevant local newsgroups for cluster notices.
 - Inspect the live module/software environment with `module avail` rather than
   assuming a particular CUDA/PyTorch version.
 - Slurm fair-share/history affects scheduling priority, so do not hold GPU
@@ -423,64 +425,76 @@ Do not assume the exact GPU model or VRAM from the public documentation. Before
 choosing the serving model, inspect the actual allocated node/GPU using the live
 cluster environment (for example `nvidia-smi` from within a GPU allocation).
 
-### Intended serving architecture
+User-reported live checks on 2026-10-20 found a Tesla V100-PCIE-16GB on one
+allocated node, with NVIDIA driver 550.163.01 (which reports CUDA 12.4). Treat
+this as an observation for that allocation, not a guarantee for every GPU node.
+The `apps/python/3.10.13/modulefile` module provided Python 3.10.13; loading
+`apps/python-package/python/3.10.13` alone left the default Python 3.6.8 active.
+The Apptainer 1.4.0 module failed to start because `libsubid.so.3` was missing,
+and the CUDA 12.4 module did not provide `nvcc` in `PATH` during that check.
 
-The preferred architecture is:
+The user supplied the PARAM Shakti usage policy on 2026-10-20. Use this
+acknowledgement in publications and related outputs, or a similar statement:
+
+> We acknowledge National Supercomputing Mission (NSM) for providing computing
+> resources of 'PARAM Shakti' at IIT Kharagpur, which is implemented by C-DAC
+> and supported by the Ministry of Electronics and Information Technology
+> (MeitY) and Department of Science and Technology (DST), Government of India.
+
+### Intended offline inference architecture
+
+The PARAM Shakti experiment runs in one Slurm job:
 
 ```text
-laptop / Codespace
-        |
-        | SSH tunnel
-        v
-PARAM Shakti login node
-        |
-        | Slurm allocation
-        v
-GPU compute node
-        |
-        | vLLM (OpenAI-compatible server)
-        v
-open-weight model
+Slurm GPU allocation -> offline_batch.py -> one vLLM LLM instance
+                                           -> batched inference
+                                           -> differential tests / repair
 ```
 
-The existing pipeline should remain unchanged at the application layer. Point it
-at the forwarded model server with:
-
-```env
-BTP_LLM_ENDPOINT=http://127.0.0.1:<forwarded-port>/v1/chat/completions
-BTP_MODEL=<served-model-name>
-```
-
-A local vLLM endpoint does not require `BTP_LLM_API_KEY` unless authentication
-is deliberately added.
+This workflow uses vLLM's Python `LLM` and `SamplingParams` APIs directly. Do
+not start an HTTP server or SSH tunnel for this workflow. The existing
+OpenAI-compatible client remains available for the one-task baseline.
 
 ### PARAM Shakti implementation rules
 
 When continuing this setup:
 
-1. First inspect the live Slurm partitions, GPU availability, GPU model/VRAM,
+1. All interaction with PARAM Shakti must be mediated by the user. Provide
+   commands for the user to run and use the outputs they share; do not connect
+   to the cluster or execute cluster commands directly. Never ask the user to
+   share passwords, private keys, or other cluster credentials.
+2. Submit jobs only from the user's `$SCRATCH` directory. Ensure the submission
+   working directory and Slurm output path are under scratch; the job may read
+   code from the project checkout while running on an allocated compute node.
+3. Do not inspect or attach to other users' jobs or model services for this
+   offline workflow; use the user's own Slurm allocation.
+4. First inspect the live Slurm partitions, GPU availability, GPU model/VRAM,
    module versions, and account limits.
-2. Choose an open-weight model only after the actual GPU memory is known.
-3. Prefer vLLM because the repository already speaks the OpenAI-compatible
-   chat-completions API.
-4. Keep large Hugging Face/model caches on scratch, not in the repository and
+5. Choose an open-weight model only after the actual GPU memory is known.
+6. Use vLLM's Python offline inference API (`LLM`, `SamplingParams`) for the
+   Slurm batch runner; do not introduce an HTTP endpoint for that workflow.
+7. Keep large Hugging Face/model caches on scratch, not in the repository and
    not unnecessarily in home.
-5. Start vLLM only inside a Slurm GPU allocation/job.
-6. Expose the compute-node server through SSH tunnelling rather than opening a
-   public endpoint.
-7. Keep generated candidate execution separate from model-serving credentials
+8. Initialize the model only inside a Slurm GPU allocation/job and reuse the
+   same in-process model instance for all requests in that job.
+9. Save experiment outputs under persistent home/project storage; scratch is
+   temporary, unbacked-up storage with a 30-day default retention period.
+10. Keep generated candidate execution separate from model-serving credentials
    and cluster secrets.
-8. Do not commit usernames, passwords, SSH private keys, access tokens, cluster
+11. Do not commit usernames, passwords, SSH private keys, access tokens, cluster
    secrets, or account-specific allocation identifiers.
-9. Persist experiment metadata/results needed for the thesis outside scratch
+12. Persist experiment metadata/results needed for the thesis outside scratch
    before its retention window can remove them.
-10. Avoid changing the research pipeline merely to accommodate the cluster if a
-    tunnel to the existing OpenAI-compatible interface is sufficient.
+13. Keep the offline Slurm runner modular and reuse task, candidate, build, and
+    differential-testing components from the existing pipeline.
 
-The exact Slurm script, model choice, tensor-parallel configuration,
-quantization, context length, and vLLM flags are intentionally **not fixed yet**.
-They must be chosen after inspecting the user's actual allocated GPU hardware
-and current cluster software.
+The initial serving choice is Qwen2.5-7B-Instruct in FP16 with tensor
+parallelism across two V100 GPUs on one node, per the user's chosen FP16 setup.
+The configurable job defaults to GPU partition, 2 GPUs, 8 CPUs, 32 GB memory,
+and 3 hours. Supply the account privately at submission time. It uses vLLM
+0.7.3 with Python 3.10.13 and
+caps the context at 8192 tokens. Setup and resumption instructions are in
+`hpc/paramshakti/`.
 
 ---
 
@@ -582,10 +596,7 @@ Do not commit:
 - generated bytecode,
 - temporary build output.
 
-### Maintain tests while GPU testing is deferred
-
-Real-model inference and PARAM Shakti experiment runs are currently deferred.
-Continue unit tests, fixture-based tests, mocked LLM tests, schema tests, and deterministic local reference/candidate tests. Do not block implementation on GPU availability.
+### Maintain tests
 
 Before considering infrastructure changes complete, run:
 
@@ -606,7 +617,7 @@ Use feature branches for implementation.
 The current continuation branch is:
 
 ```text
-experiments/raw-feedback
+experiments/comparison-foundation
 ```
 
 Do not push changes directly to `main` unless the user explicitly requests it.
@@ -620,18 +631,19 @@ Keep commits focused and descriptive.
 
 ## What to work on next
 
-`ROADMAP.md` is the source of truth for the deferred-GPU continuation plan. The final experiment is baseline vs raw vs abstract vs path/trace. Use at most the five work branches described there. The current implementation branch is `experiments/raw-feedback`.
-
-Do not assume the next step is live testing.
+Do not assume the next step is implementation.
 
 Current immediate state:
 
-1. Phases 0-5 are implemented and verified.
-2. OpenRouter end-to-end execution works.
-3. PARAM Shakti GPU access has been approved; local open-weight model serving is the next infrastructure step.
-4. Ten real-software pilot benchmarks are being prepared on the experiment branch.
-5. Real-model/GPU testing is deferred; local fixture/unit validation continues.
-6. The final research destination compares three feedback approaches: raw, abstract, and candidate path/trace, against the no-feedback baseline.
-7. The approved current implementation scope is the raw-feedback branch described in `ROADMAP.md`.
+1. The one-task no-feedback baseline remains the Phases 0-5 reference path.
+2. The offline batch runner now supports batched generation, raw-feedback
+   repair, checkpointing, and resumption.
+3. PARAM Shakti execution must be initiated and managed by the user; use the
+   provided Slurm script and review the outputs they share.
+4. GPU validation is deferred at `test-stop/raw-feedback-v1`. Continue with
+   the phase-scoped plan in `docs/ROADMAP.md`; do not wait for GPU testing to
+   prepare the next phase. The continuation branch starts with planning only.
 
-Implement only the raw-feedback/offline-resume scope assigned to this branch in `ROADMAP.md`. Preserve `experiments/real-software-v1` as the baseline checkpoint.
+The next agent should first follow the user's current instruction. Do not infer
+additional research phases from the existence of the offline raw-feedback
+runner; discuss any new experimental method before implementing it.

@@ -1,0 +1,14 @@
+{
+  "tasks": [
+    "01_line_count/task.json",
+    "02_ascii_upper/task.json",
+    "03_numeric_sort/task.json",
+    "04_adjacent_run_count/task.json",
+    "05_colon_field_select/task.json",
+    "06_width_wrap/task.json",
+    "07_base64_encode/task.json",
+    "08_json_compact/task.json",
+    "09_casefold_unique_sort/task.json",
+    "10_base64_decode/task.json"
+  ]
+}

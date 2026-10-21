@@ -4,7 +4,9 @@
 
 Given a natural-language specification and a black-box reference executable,
 synthesize a replacement program whose observable stdin/stdout behaviour matches
-the reference implementation. Later phases will add iterative repair.
+the reference implementation. The offline runner now implements raw-feedback
+repair; real GPU validation is deferred at the
+[recorded testing stop](docs/checkpoints/raw-feedback-v1.md).
 
 ## v1 execution contract
 
@@ -28,7 +30,7 @@ the reference implementation. Later phases will add iterative repair.
 
 Phases 0–5 implement the no-feedback baseline:
 
-1. Load a natural-language specification and stdin/stdout format description.
+1. Load a natural-language specification and input-format description.
 2. Ask the configured LLM for one structured Python or C++ candidate.
 3. Build/materialize the candidate.
 4. Ask the LLM for complete stdin testcases.
@@ -37,12 +39,23 @@ Phases 0–5 implement the no-feedback baseline:
 
 No black-box failures are shown back to the LLM in this baseline.
 
-## Planned feedback workflow
+## Feedback workflow and continued development
 
-Later phases will repair the current candidate using either:
+The offline batch runner repairs the current candidate using raw differential
+failures and reuses its development tests across iterations. It checkpoints
+inference responses and experiment stages, and uses one in-process vLLM model.
+This implemented path is awaiting actual GPU validation.
+
+The intended research comparison uses:
 
 - raw feedback: input + reference output + candidate output, or
 - abstract feedback: an LLM-generated summary of failure patterns.
+
+The no-feedback baseline is the third condition. Abstract feedback, paired arm
+orchestration, reusable development/held-out pools, and final reporting remain
+to implement. The [roadmap](docs/ROADMAP.md) groups them into three continuation
+branches with separate deferred GPU acceptance checkpoints. Its material
+research choices remain subject to phase review.
 
 ## Explicitly out of scope for v1
 

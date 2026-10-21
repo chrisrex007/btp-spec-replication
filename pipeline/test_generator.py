@@ -22,21 +22,13 @@ def _deduplicate_preserving_order(items: list[str]) -> list[str]:
     return unique
 
 
-def generate_tests(
-    *,
-    specification: str,
-    input_format: str,
-    count: int,
-    run_dir: str | Path,
-    target: str,
-    seed: int = 42,
-    call_fn: Callable[..., str] = logged_call,
-) -> list[str]:
-    """Generate complete stdin payloads and remove exact duplicates."""
+def test_generation_request(
+    *, specification: str, input_format: str, count: int
+) -> tuple[str, str, dict]:
+    """Build prompts and schema shared by online and offline test generation."""
 
     if count <= 0:
         raise ValueError("count must be positive")
-
     system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
     user_prompt = (
         "## Specification\n\n"
@@ -58,6 +50,38 @@ def generate_tests(
         "required": ["tests"],
         "additionalProperties": False,
     }
+    return system_prompt, user_prompt, schema
+
+
+def parse_tests_response(raw: str) -> list[str]:
+    """Parse test inputs and remove exact duplicates, preserving order."""
+
+    tests = json.loads(raw)["tests"]
+    if not isinstance(tests, list) or not all(isinstance(item, str) for item in tests):
+        raise ValueError("LLM test response must contain a string array")
+    unique = _deduplicate_preserving_order(tests)
+    if not unique:
+        raise ValueError("LLM produced no usable testcases")
+    return unique
+
+
+def generate_tests(
+    *,
+    specification: str,
+    input_format: str,
+    count: int,
+    run_dir: str | Path,
+    target: str,
+    seed: int = 42,
+    call_fn: Callable[..., str] = logged_call,
+) -> list[str]:
+    """Generate complete stdin payloads and remove exact duplicates."""
+
+    system_prompt, user_prompt, schema = test_generation_request(
+        specification=specification,
+        input_format=input_format,
+        count=count,
+    )
 
     raw = call_fn(
         run_dir=run_dir,
@@ -72,12 +96,4 @@ def generate_tests(
         json_schema=schema,
         schema_name="test_inputs",
     )
-    data = json.loads(raw)
-    tests = data["tests"]
-    if not all(isinstance(item, str) for item in tests):
-        raise ValueError("LLM test response contains a non-string testcase")
-
-    unique = _deduplicate_preserving_order(tests)
-    if not unique:
-        raise ValueError("LLM produced no usable testcases")
-    return unique
+    return parse_tests_response(raw)

@@ -1,0 +1,7 @@
+Repair the current candidate program using the specification and raw
+differential-testing failures below.
+
+Return one complete replacement program in the same supported language as the
+current candidate. Preserve correct behaviour where possible, but fix the
+observed mismatches and execution errors. Do not print debugging output.
+Return only the structured response requested by the caller.
