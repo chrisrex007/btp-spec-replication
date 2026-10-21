@@ -31,9 +31,14 @@ GPU testing is paused as of 2026-10-21. The tag
 for later testing; it is not a validation claim. See
 `docs/checkpoints/raw-feedback-v1.md` for the deferred GPU checklist.
 
-Continue planning on `experiments/comparison-foundation`. The proposed roadmap
-in `docs/ROADMAP.md` uses four work branches total, including the preserved
-branch. GPU testing does not block local development; keep local unit checks.
+Continue on `experiments/raw-feedback`, renamed from the planning-only
+`experiments/comparison-foundation` branch. The approved roadmap in
+`docs/ROADMAP.md` uses five work branches total, six including `main`:
+`real-software-v1`, `raw-feedback`, `comparison-foundation`, `feedback-variants`,
+and `evaluation-reporting`, all under `experiments/`. Create future branches
+only when their phase starts. Preserve the existing checkpoint and historical
+branch; the checkpoint includes raw repair, not only the no-feedback baseline.
+GPU testing does not block local development; keep local unit checks.
 Review each phase and material research choices before implementing it.
 
 Do not merge it into `main` unless the user explicitly asks.
@@ -88,8 +93,9 @@ A candidate/reference execution is considered unsuccessful if it:
 - times out, or
 - exits with a non-zero status.
 
-Do not add HTTP, GUI, stateful-session, or execution-trace interfaces unless the
-user explicitly changes the project scope.
+Do not add HTTP, GUI, or stateful-session interfaces unless the user explicitly
+changes the project scope. Candidate execution tracing is approved as a feedback
+side-channel; scoring still uses the normal uninstrumented stdin/stdout program.
 
 ---
 
@@ -129,7 +135,8 @@ The intended main comparison is:
 
 1. no-feedback/spec-only baseline,
 2. raw failure feedback,
-3. abstract failure feedback.
+3. abstract failure feedback,
+4. candidate path/trace feedback.
 
 Raw feedback is expected to contain:
 
@@ -140,7 +147,19 @@ Raw feedback is expected to contain:
 Abstract feedback will be produced by an LLM that groups/summarizes failure
 patterns into behavioural classes.
 
-When repair is implemented, repair the **current candidate directly**:
+Path/trace feedback adds a compact, normalized execution trace of the current
+candidate to raw failure feedback. Never inspect or instrument the reference.
+Provide Python and C++ collectors behind a common trace interface, persist
+traces separately from stdout, and record collection errors and truncation.
+Choose collection mechanisms during the feedback-variants phase review.
+
+All four arms share the same frozen initial candidate per task/seed, development
+pool, held-out pool, and relevant model configuration. Repair arms share the
+same maximum iteration budget and stopping rules. Record abstraction inference
+and tracing overhead separately; equal repair rounds do not imply equal compute.
+Held-out outcomes must never influence filtering, feedback, or repair.
+
+The shared repair loop must repair the **current candidate directly**:
 
 ```text
 specification + current candidate + feedback
@@ -162,8 +181,10 @@ Do **not** reintroduce the old methodology of:
 
 Those were intentionally removed from the repository.
 
-Execution-trace feedback is a possible later extension, not part of the current
-core experiment.
+Candidate path/trace feedback is part of the core planned experiment and will
+be implemented alongside abstract feedback in `experiments/feedback-variants`.
+Both plug into the shared repair orchestration; neither is implemented yet.
+All differential scoring uses the normal uninstrumented candidate.
 
 ---
 
@@ -617,7 +638,7 @@ Use feature branches for implementation.
 The current continuation branch is:
 
 ```text
-experiments/comparison-foundation
+experiments/raw-feedback
 ```
 
 Do not push changes directly to `main` unless the user explicitly requests it.
@@ -642,7 +663,13 @@ Current immediate state:
    provided Slurm script and review the outputs they share.
 4. GPU validation is deferred at `test-stop/raw-feedback-v1`. Continue with
    the phase-scoped plan in `docs/ROADMAP.md`; do not wait for GPU testing to
-   prepare the next phase. The continuation branch starts with planning only.
+   prepare the next phase. The branch/roadmap reorganization is implemented;
+   the next code phase is reusable repair orchestration and raw-feedback
+   strategy extraction, plus offline/resume/configuration/Slurm hardening.
+5. The final comparison is baseline vs raw vs abstract vs candidate path/trace.
+   Review each code phase and its material research choices before implementing
+   it. Trace mechanisms, pool sizes, repetitions, feedback limits and final
+   scoring details remain phase-review decisions.
 
 The next agent should first follow the user's current instruction. Do not infer
 additional research phases from the existence of the offline raw-feedback

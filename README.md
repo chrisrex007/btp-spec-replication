@@ -10,7 +10,10 @@ resumable offline batch runner with raw failure-feedback repair.
 GPU testing is currently paused. The source checkpoint and deferred acceptance
 checks are recorded in [the testing stop](docs/checkpoints/raw-feedback-v1.md).
 The [remaining-work roadmap](docs/ROADMAP.md) groups continued development into
-three further branches (four work branches including the existing checkpoint).
+four further branches (five work branches, six including `main`). The final
+comparison is baseline vs raw vs abstract vs candidate path/trace feedback.
+The current continuation branch is `experiments/raw-feedback`; abstract and
+path/trace strategies remain planned work, with uninstrumented candidate scoring.
 
 ## Requirements
 

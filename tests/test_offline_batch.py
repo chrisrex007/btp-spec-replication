@@ -48,6 +48,45 @@ class OfflineBatchTests(unittest.TestCase):
             timeout_seconds=5,
         )
 
+    def test_rejects_invalid_configuration(self):
+        from dataclasses import replace
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            task = self._task(root, "double")
+            base = BatchConfig(experiment_id="valid", output_root=root / "runs")
+            for changes in ({"experiment_id": ".."}, {"feedback_cases": 0}, {"gpu_memory_utilization": float("nan")}, {"workers": 0}):
+                with self.subTest(changes=changes), self.assertRaises(ValueError):
+                    run_offline_batch([task], config=replace(base, **changes), runtime=FakeRuntime())
+
+    def test_inference_record_reused_when_state_save_was_lost(self):
+        from dataclasses import replace
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            task = self._task(root, "double")
+            config = BatchConfig(experiment_id="resume", output_root=root / "runs", max_repair_iterations=0)
+            run_offline_batch([task], config=config, runtime=FakeRuntime(), should_stop=lambda: True)
+            state_path = root / "runs/resume/double/state.json"
+            state = json.loads(state_path.read_text())
+            state["stage"] = "candidate_request"
+            state_path.write_text(json.dumps(state))
+            runtime = FakeRuntime()
+            result = run_offline_batch([task], config=replace(config, resume=True), runtime=runtime)
+            self.assertEqual(result["status"], "completed")
+            self.assertEqual([call[0].step for call in runtime.calls], ["test_generation"])
+
+    def test_reference_failure_stops_repair_and_is_terminal_failure(self):
+        from dataclasses import replace
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            task = replace(self._task(root, "double"), reference_command=(sys.executable, "-c", "raise SystemExit(1)"))
+            runtime = FakeRuntime()
+            result = run_offline_batch([task], config=BatchConfig(experiment_id="invalid-ref", output_root=root / "runs"), runtime=runtime)
+            self.assertEqual(result["status"], "completed_with_failures")
+            summary = result["tasks"]["double"]["latest_summary"]
+            self.assertEqual(summary["n_valid"], 0)
+            self.assertIsNone(summary["accuracy"])
+            self.assertEqual(len(runtime.calls), 2)
+
     def test_batches_tasks_repairs_and_persists_reusable_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

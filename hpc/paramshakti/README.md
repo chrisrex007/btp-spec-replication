@@ -34,7 +34,10 @@ retention limit.
 ## Submit a multi-benchmark experiment
 
 Ensure the project checkout is visible to the compute node. Set
-`BTP_PROJECT_ROOT` to that checkout. Submit only from `$SCRATCH`; Slurm writes
+`BTP_PROJECT_ROOT` to that checkout. Set `SCRATCH` (or `BTP_SCRATCH_ROOT`) to
+the existing absolute scratch directory assigned to you; there is no guessed
+account-specific default. Submit only from that directory or its descendants;
+Slurm writes
 its output file in the scratch submission directory:
 
 ```bash
@@ -67,7 +70,8 @@ The job script maps `BTP_TESTS`, `BTP_WORKERS`, `BTP_MAX_REPAIR_ITERATIONS`,
 `BTP_FEEDBACK_CASES`, `BTP_SEED`, `BTP_MAX_MODEL_LEN`,
 `BTP_GPU_MEMORY_UTILIZATION`, and `BTP_MAX_NUM_SEQS` to the Python runner.
 `BTP_RESULTS_ROOT` can point to another
-persistent home/project filesystem. `BTP_SCRATCH_ROOT` controls the Hugging
+persistent home/project filesystem outside scratch. The script rejects results
+under the configured scratch root. `BTP_SCRATCH_ROOT` controls the Hugging
 Face cache location. The first run needs the public model files available in
 the cache or a cluster-approved download route.
 
@@ -81,7 +85,13 @@ $HOME/btp-results/<experiment-id>/
 ```
 
 To continue an interrupted experiment, resubmit the same experiment ID with
-`BTP_RESUME=1`. The runner validates a fingerprint of the task manifest and
+`BTP_RESUME=1`. Use `BTP_RESUME=0` (the default) for a fresh run; other values
+are rejected. Before loading modules or initializing the model, the script
+requires a Slurm job with allocated GPUs and checks the resolved submission
+directory is inside the resolved scratch root. These checks cannot prevent an
+incorrect submission from reaching Slurm: always `cd` to scratch **before**
+running `sbatch`, and keep any `--output` override under scratch.
+The runner validates a fingerprint of the task manifest and
 inference configuration before reusing checkpoints. Slurm sends `USR1` two
 minutes before the time limit; the runner finishes/persists the current batch
 and exits so the same experiment can be resumed.

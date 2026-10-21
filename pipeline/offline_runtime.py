@@ -24,6 +24,9 @@ class InferenceRequest:
 class InferenceOutput:
     response: str
     latency_s: float
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    batch_latency_s: float | None = None
 
 
 class OfflineVLLM:
@@ -46,6 +49,7 @@ class OfflineVLLM:
                 "Offline inference requires vLLM in the active Python environment"
             ) from exc
 
+        self.max_model_len = max_model_len
         self.model = model
         self.llm = LLM(
             model=model,
@@ -94,6 +98,10 @@ class OfflineVLLM:
             self._format_chat(item.system_prompt, item.user_prompt)
             for item in requests
         ]
+        token_counts = [len(self.tokenizer.encode(prompt, add_special_tokens=False)) for prompt in prompts]
+        for item, count in zip(requests, token_counts):
+            if item.max_tokens <= 0 or count + item.max_tokens > self.max_model_len:
+                raise ValueError(f"context budget exceeded for {item.task}/{item.step}: {count} + {item.max_tokens} > {self.max_model_len}")
         started = time.monotonic()
         outputs = self.llm.generate(prompts, params)
         total_latency = time.monotonic() - started
@@ -104,8 +112,10 @@ class OfflineVLLM:
         # the shared batch latency is also written into each record.
         per_request = total_latency / len(outputs)
         return [
-            InferenceOutput(response=output.outputs[0].text, latency_s=per_request)
-            for output in outputs
+            InferenceOutput(response=output.outputs[0].text, latency_s=per_request,
+                            prompt_tokens=count, completion_tokens=len(output.outputs[0].token_ids),
+                            batch_latency_s=total_latency)
+            for output, count in zip(outputs, token_counts)
         ]
 
 

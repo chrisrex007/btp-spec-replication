@@ -46,23 +46,38 @@ failures and reuses its development tests across iterations. It checkpoints
 inference responses and experiment stages, and uses one in-process vLLM model.
 This implemented path is awaiting actual GPU validation.
 
-The intended research comparison uses:
+The final research comparison has four arms:
 
-- raw feedback: input + reference output + candidate output, or
-- abstract feedback: an LLM-generated summary of failure patterns.
+- baseline: the frozen initial candidate, without repair;
+- raw feedback: input + reference output + candidate output;
+- abstract feedback: an LLM-generated summary of supported failure patterns;
+- path/trace feedback: raw failures plus the current candidate's execution path.
 
-The no-feedback baseline is the third condition. Abstract feedback, paired arm
-orchestration, reusable development/held-out pools, and final reporting remain
-to implement. The [roadmap](docs/ROADMAP.md) groups them into three continuation
-branches with separate deferred GPU acceptance checkpoints. Its material
-research choices remain subject to phase review.
+All arms share one frozen initial candidate per task/seed, the same development
+and held-out pools, and relevant model configuration. Repair arms share maximum
+repair rounds and stopping rules. Each repairs its own current candidate through
+shared feedback preparation, repair, build, evaluation and persistence stages.
+Abstraction and trace overhead are accounted for separately.
+
+Path/trace feedback is core planned scope. A shared collector interface will
+support Python and C++, producing compact normalized traces tied to candidate
+and input identities. Traces are stored separately from stdout, with explicit
+errors and truncation. The reference is never traced or instrumented. Scoring
+always uses the normal uninstrumented candidate; tracing only supplies feedback.
+
+Reusable repair orchestration, frozen development/held-out pools, abstract and
+path/trace strategies, four-arm integration, and final reporting remain to
+implement. The [roadmap](docs/ROADMAP.md) groups this into four continuation
+branches plus the preserved checkpoint: five work branches, six with `main`.
+Each milestone has separate local and deferred GPU acceptance. Material research
+choices, including tracing mechanisms, remain subject to phase review.
 
 ## Explicitly out of scope for v1
 
 - HTTP/API interaction
 - GUI interaction
 - Stateful sessions
-- Execution-trace/path feedback
+- Reference execution tracing
 - Advanced test-generation strategies
 - Non-deterministic targets
 - Languages other than Python and C++

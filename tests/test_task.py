@@ -34,14 +34,22 @@ class TaskTests(unittest.TestCase):
             self.assertEqual(task.timeout_seconds, 1.5)
 
     def test_rejects_unsafe_task_name(self):
-        with self.assertRaises(ValueError):
-            BenchmarkTask(
-                name="../bad",
-                specification_path=Path("spec.md"),
-                reference_command=("program",),
-                reference_cwd=Path("."),
-                input_format="input",
-            )
+        for name in ("../bad", ".", ".."):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                BenchmarkTask(
+                    name=name, specification_path=Path("spec.md"),
+                    reference_command=("program",), reference_cwd=Path("."),
+                    input_format="input",
+                )
+
+    def test_rejects_nonfinite_timeout(self):
+        for timeout in (float("nan"), float("inf"), 0):
+            with self.subTest(timeout=timeout), self.assertRaises(ValueError):
+                BenchmarkTask(
+                    name="safe", specification_path=Path("spec.md"),
+                    reference_command=("program",), reference_cwd=Path("."),
+                    input_format="input", timeout_seconds=timeout,
+                )
 
 
 if __name__ == "__main__":

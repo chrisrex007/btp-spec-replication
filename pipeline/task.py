@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import math
 from pathlib import Path
 import re
 
@@ -21,7 +22,7 @@ class BenchmarkTask:
     timeout_seconds: float = 2.0
 
     def __post_init__(self) -> None:
-        if not self.name or not _TASK_NAME_RE.fullmatch(self.name):
+        if not self.name or self.name in {".", ".."} or not _TASK_NAME_RE.fullmatch(self.name):
             raise ValueError(
                 "task name must contain only letters, digits, '.', '_' or '-'"
             )
@@ -29,8 +30,8 @@ class BenchmarkTask:
             raise ValueError("reference command must not be empty")
         if not self.input_format.strip():
             raise ValueError("input_format must not be empty")
-        if self.timeout_seconds <= 0:
-            raise ValueError("timeout_seconds must be positive")
+        if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be finite and positive")
 
     @classmethod
     def from_json(cls, path: str | Path) -> "BenchmarkTask":

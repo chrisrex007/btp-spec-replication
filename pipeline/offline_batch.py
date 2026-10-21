@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -22,6 +23,7 @@ from .differential import run_differential_suite
 from .generator import CANDIDATE_SCHEMA, candidate_messages, parse_candidate_response
 from .offline_runtime import InferenceOutput, InferenceRequest, OfflineVLLM
 from .repair import repair_messages
+from .feedback import RawFeedbackStrategy
 from .task import BenchmarkTask
 from .test_generator import parse_tests_response, test_generation_request
 
@@ -138,6 +140,9 @@ def _write_inference(
         "response": output.response,
         "latency_s": output.latency_s,
         "batch_size": batch_size,
+        "prompt_tokens": output.prompt_tokens,
+        "completion_tokens": output.completion_tokens,
+        "batch_latency_s": output.batch_latency_s,
     }
     _atomic_json(_response_path(run_dir, request.iteration, request.step), record)
     _append_jsonl(run_dir / "inference.jsonl", record)
@@ -174,17 +179,7 @@ def _request_for(
             source=candidate_path.read_text(encoding="utf-8"),
         )
         failures = json.loads((round_dir / "failures.json").read_text(encoding="utf-8"))
-        # Never expose harness-private command lines in model prompts. Raw
-        # feedback is limited to stdin, status, and observed stdout values.
-        feedback = [
-            {
-                "input": item["input"],
-                "status": item["status"],
-                "reference_stdout": item["reference"]["stdout"],
-                "candidate_stdout": item["candidate"]["stdout"],
-            }
-            for item in failures
-        ]
+        feedback = RawFeedbackStrategy().prepare(failures, feedback_cases)
         system, user, schema = repair_messages(
             specification=spec,
             input_format=task.input_format,
@@ -207,25 +202,41 @@ def _execute_batch(
     test_count: int,
     feedback_cases: int,
 ) -> None:
-    requests = [
-        _request_for(
-            tasks_by_name[state["task"]], state, stage,
-            test_count=test_count, seed=config.seed, feedback_cases=feedback_cases,
-        )
-        for state in states
-    ]
-    outputs = runtime.generate_batch(requests)
-    if len(outputs) != len(requests):
-        raise RuntimeError("offline runtime returned a different number of outputs than requests")
-
     next_stage = {
         "candidate_request": "candidate_response",
         "tests_request": "tests_response",
         "repair_request": "repair_response",
     }[stage]
-    for state, request, output in zip(states, requests, outputs):
+    pending = []
+    for state in states:
         run_dir = Path(state["run_dir"])
-        _write_inference(run_dir, request, output, model=config.model, batch_size=len(requests))
+        try:
+            request = _request_for(tasks_by_name[state["task"]], state, stage,
+                                   test_count=test_count, seed=config.seed, feedback_cases=feedback_cases)
+            path = _response_path(run_dir, request.iteration, request.step)
+            if path.exists():
+                record = json.loads(path.read_text(encoding="utf-8"))
+                expected = {"task": request.task, "step": request.step, "iteration": request.iteration,
+                            "system_prompt": request.system_prompt, "user_prompt": request.user_prompt,
+                            "schema": request.schema, "model": config.model, "seed": request.seed,
+                            "temperature": request.temperature, "max_tokens": request.max_tokens}
+                if any(record.get(k) != v for k, v in expected.items()) or not isinstance(record.get("response"), str):
+                    raise ValueError("inference checkpoint does not match request")
+                state["stage"] = next_stage
+                _save_state(run_dir, state)
+            else:
+                pending.append((state, request))
+        except Exception as exc:
+            _mark_failed(run_dir, state, "request_failed", f"{type(exc).__name__}: {exc}")
+    if not pending:
+        return
+    # Engine failures propagate: a later job may resume pending requests.
+    outputs = runtime.generate_batch([request for _, request in pending])
+    if len(outputs) != len(pending):
+        raise RuntimeError("offline runtime returned a different number of outputs than requests")
+    for (state, request), output in zip(pending, outputs):
+        run_dir = Path(state["run_dir"])
+        _write_inference(run_dir, request, output, model=config.model, batch_size=len(pending))
         state["stage"] = next_stage
         _save_state(run_dir, state)
 
@@ -296,20 +307,27 @@ def _evaluate_one(task: BenchmarkTask, run_dir: Path, state: dict, max_repair_it
         _atomic_json(round_dir / "results.json", payload)
         _atomic_json(round_dir / "failures.json", failures)
         passing = len(results) - len(failures)
-        accuracy = passing / len(results) if results else None
+        n_reference_error = sum(item["status"] in {"reference_error", "reference_timeout"} for item in payload)
+        n_valid = len(results) - n_reference_error
+        accuracy = passing / n_valid if n_valid else None
         round_summary = {
             "task": task.name,
             "iteration": iteration,
             "status": "completed",
             "n_total": len(results),
             "n_pass": passing,
+            "n_valid": n_valid,
+            "n_reference_error": n_reference_error,
             "n_fail": len(failures),
             "accuracy": accuracy,
             "status_counts": dict(sorted(Counter(item["status"] for item in payload).items())),
         }
         _atomic_json(round_dir / "summary.json", round_summary)
         state["latest_summary"] = round_summary
-        if failures and iteration < max_repair_iterations:
+        if n_reference_error:
+            _mark_failed(run_dir, state, "reference_invalid", "Reference execution failed on development pool")
+            return
+        if RawFeedbackStrategy().prepare(failures, 1) and iteration < max_repair_iterations:
             state["stage"] = "repair_request"
         else:
             state["stage"] = "completed"
@@ -326,6 +344,7 @@ def _progress_summary(experiment_dir: Path, states: list[dict]) -> dict:
         "updated_at": _utc_now(),
         "n_tasks": len(states),
         "n_terminal": sum(_terminal(state) for state in states),
+        "n_failed": sum(state["stage"] == "failed" for state in states),
         "stages": dict(sorted(status_counts.items())),
         "tasks": {
             state["task"]: {
@@ -344,18 +363,36 @@ def _progress_summary(experiment_dir: Path, states: list[dict]) -> dict:
 def _initialize_experiment(
     tasks: list[BenchmarkTask], config: BatchConfig
 ) -> tuple[Path, list[dict]]:
-    if not _ID_RE.fullmatch(config.experiment_id):
+    if config.experiment_id in {".", ".."} or not _ID_RE.fullmatch(config.experiment_id):
         raise ValueError("experiment_id may contain only letters, digits, '.', '_' or '-'")
     if not tasks:
         raise ValueError("at least one benchmark task is required")
     names = [task.name for task in tasks]
     if len(names) != len(set(names)):
         raise ValueError("task names in one batch must be unique")
-    if config.test_count <= 0 or config.max_repair_iterations < 0 or config.workers <= 0:
-        raise ValueError("test count and workers must be positive; repair iterations cannot be negative")
+    for name in ("test_count", "workers", "feedback_cases", "tensor_parallel_size", "max_model_len", "max_num_seqs"):
+        value = getattr(config, name)
+        if type(value) is not int or value <= 0:
+            raise ValueError(f"{name} must be a positive integer")
+    if type(config.max_repair_iterations) is not int or config.max_repair_iterations < 0:
+        raise ValueError("max_repair_iterations must be a nonnegative integer")
+    if not math.isfinite(config.gpu_memory_utilization) or not 0 < config.gpu_memory_utilization <= 1:
+        raise ValueError("gpu_memory_utilization must be finite and in (0, 1]")
+    if not config.model.strip() or type(config.seed) is not int:
+        raise ValueError("model must be nonempty and seed must be an integer")
+    for task in tasks:
+        if task.name in {".", ".."} or not _ID_RE.fullmatch(task.name):
+            raise ValueError("task names must be safe directory identifiers")
+        if not math.isfinite(task.timeout_seconds) or task.timeout_seconds <= 0:
+            raise ValueError("task timeout must be positive and finite")
 
     experiment_dir = config.output_root.expanduser().resolve() / config.experiment_id
     fingerprint_payload = {
+        "implementation_sha256": _sha256("".join(
+            str(path.relative_to(Path(__file__).parent)) + ":" + _sha256(path.read_text(encoding="utf-8"))
+            for path in sorted(Path(__file__).parent.rglob("*"))
+            if path.suffix in {".py", ".txt"}
+        )),
         "model": config.model,
         "dtype": config.dtype,
         "tensor_parallel_size": config.tensor_parallel_size,
@@ -421,7 +458,12 @@ def _initialize_experiment(
         state_path = run_dir / "state.json"
         if state_path.exists():
             state = json.loads(state_path.read_text(encoding="utf-8"))
-            if state.get("task") != task.name:
+            valid_stages = {"candidate_request", "candidate_response", "tests_request", "tests_response",
+                            "repair_request", "repair_response", "evaluate", "completed", "failed"}
+            if (state.get("task") != task.name or state.get("run_dir") != str(run_dir)
+                    or state.get("stage") not in valid_stages
+                    or type(state.get("iteration")) is not int
+                    or not 0 <= state["iteration"] <= config.max_repair_iterations):
                 raise ValueError(f"invalid checkpoint for task {task.name}")
         else:
             state = {
@@ -461,10 +503,10 @@ def run_offline_batch(
     })
     if all(_terminal(state) for state in states):
         summary = _progress_summary(experiment_dir, states)
-        summary["status"] = "completed"
+        summary["status"] = "completed_with_failures" if summary["n_failed"] else "completed"
         _atomic_json(experiment_dir / "summary.json", summary)
         _append_jsonl(experiment_dir / "attempts.jsonl", {
-            "finished_at": _utc_now(), "status": "completed"
+            "finished_at": _utc_now(), "status": summary["status"]
         })
         return summary
     if runtime is None:
@@ -499,12 +541,15 @@ def run_offline_batch(
         if response_states:
             def consume(state: dict) -> None:
                 run_dir = Path(state["run_dir"])
-                if state["stage"] == "candidate_response":
-                    _consume_candidate_response(run_dir, state, repair=False)
-                elif state["stage"] == "tests_response":
-                    _consume_tests_response(run_dir, state)
-                else:
-                    _consume_candidate_response(run_dir, state, repair=True)
+                try:
+                    if state["stage"] == "candidate_response":
+                        _consume_candidate_response(run_dir, state, repair=False)
+                    elif state["stage"] == "tests_response":
+                        _consume_tests_response(run_dir, state)
+                    else:
+                        _consume_candidate_response(run_dir, state, repair=True)
+                except Exception as exc:
+                    _mark_failed(run_dir, state, "artifact_failed", f"{type(exc).__name__}: {exc}")
 
             with ThreadPoolExecutor(max_workers=config.workers) as pool:
                 list(pool.map(consume, response_states))
@@ -532,7 +577,8 @@ def run_offline_batch(
             break
 
     summary = _progress_summary(experiment_dir, states)
-    summary["status"] = "interrupted" if not all(_terminal(s) for s in states) else "completed"
+    summary["status"] = ("interrupted" if not all(_terminal(s) for s in states) else
+                         "completed_with_failures" if summary["n_failed"] else "completed")
     _atomic_json(experiment_dir / "summary.json", summary)
     _append_jsonl(experiment_dir / "attempts.jsonl", {
         "finished_at": _utc_now(), "status": summary["status"]

@@ -16,9 +16,29 @@
 
 set -euo pipefail
 
+fail() { echo "Configuration error: $*" >&2; exit 2; }
+
+[[ -n "${SLURM_JOB_ID:-}" ]] || fail "Run inside a Slurm GPU batch allocation."
+[[ -n "${SLURM_JOB_GPUS:-${SLURM_STEP_GPUS:-}}" ]] || fail "No Slurm GPU allocation detected."
+SCRATCH_ROOT="${BTP_SCRATCH_ROOT:-${SCRATCH:-}}"
+[[ "$SCRATCH_ROOT" == /* ]] || fail "Set SCRATCH or BTP_SCRATCH_ROOT to an absolute scratch directory."
+SCRATCH_ROOT="$(realpath -e -- "$SCRATCH_ROOT")" || fail "Scratch directory does not exist."
+[[ "$SCRATCH_ROOT" != / ]] || fail "Scratch root cannot be /."
+[[ "${SLURM_SUBMIT_DIR:-}" == /* ]] || fail "SLURM_SUBMIT_DIR must be absolute."
+SUBMIT_DIR="$(realpath -e -- "$SLURM_SUBMIT_DIR")" || fail "Submission directory does not exist."
+[[ "$SUBMIT_DIR" == "$SCRATCH_ROOT" || "$SUBMIT_DIR" == "$SCRATCH_ROOT/"* ]] || fail "Submit only from scratch."
+case "${BTP_RESUME:-0}" in
+    0) RESUME_ARGS=() ;;
+    1) RESUME_ARGS=(--resume) ;;
+    *) fail "BTP_RESUME must be 0 or 1." ;;
+esac
+[[ -n "${BTP_EXPERIMENT_ID:-}" ]] || fail "Set BTP_EXPERIMENT_ID."
+
 PROJECT_ROOT="${BTP_PROJECT_ROOT:-$SLURM_SUBMIT_DIR}"
 RESULTS_ROOT="${BTP_RESULTS_ROOT:-$HOME/btp-results}"
-SCRATCH_ROOT="${BTP_SCRATCH_ROOT:-/scratch/scratch26/$USER}"
+[[ "$RESULTS_ROOT" == /* ]] || fail "BTP_RESULTS_ROOT must be absolute."
+RESULTS_ROOT="$(realpath -m -- "$RESULTS_ROOT")"
+[[ "$RESULTS_ROOT" != "$SCRATCH_ROOT" && "$RESULTS_ROOT" != "$SCRATCH_ROOT/"* ]] || fail "Store results on persistent home/project storage outside scratch."
 VENV_PATH="${BTP_VENV_PATH:-$HOME/venvs/vllm-0.7.3}"
 
 cd "$PROJECT_ROOT"
@@ -60,4 +80,4 @@ exec python -m pipeline.offline_batch \
     --max-repair-iterations "${BTP_MAX_REPAIR_ITERATIONS:-2}" \
     --feedback-cases "${BTP_FEEDBACK_CASES:-12}" \
     --seed "${BTP_SEED:-42}" \
-    ${BTP_RESUME:+--resume}
+    "${RESUME_ARGS[@]}"

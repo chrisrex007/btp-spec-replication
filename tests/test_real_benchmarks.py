@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import shutil
 import unittest
 
@@ -32,6 +33,7 @@ class RealBenchmarkTests(unittest.TestCase):
             self.assertNotIn('"output_format"', text, directory)
             BenchmarkTask.from_json(task_path)
 
+    @unittest.skipIf(os.name == "nt", "GNU/Linux reference-oracle integration requires a Linux environment")
     def test_reference_oracles_match_spec_smoke_cases(self):
         for directory, stdin_data, expected in CASES:
             with self.subTest(directory=directory):
