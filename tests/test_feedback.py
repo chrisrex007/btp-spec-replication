@@ -16,4 +16,3 @@ class FeedbackTests(unittest.TestCase):
         _, prompt, _ = repair_messages(specification="spec", input_format="input", candidate=CandidateSource(language="python", filename="main.py", source="print(0)"), feedback_kind="abstract", feedback_text="class one")
         self.assertIn("abstract feedback", prompt)
         self.assertIn("class one", prompt)
-
