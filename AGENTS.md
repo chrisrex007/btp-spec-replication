@@ -23,12 +23,12 @@ algorithm reconstruction.
 The active development branch is:
 
 ```text
-experiments/real-software-v1
+experiments/raw-feedback
 ```
 
 Do not merge it into `main` unless the user explicitly asks.
 
-This branch is now the **baseline testing stop point** while real-model/GPU testing is deferred. Do not add further implementation work here. See `ROADMAP.md` for the continuation sequence.
+`experiments/real-software-v1` is the frozen baseline testing stop point. This branch continues implementation with the raw-feedback scope defined in `ROADMAP.md`; real-model/GPU testing remains deferred.
 
 Phases 0-5 are implemented and have been exercised successfully in GitHub
 Codespaces.
@@ -597,7 +597,7 @@ Use feature branches for implementation.
 The current continuation branch is:
 
 ```text
-experiments/real-software-v1
+experiments/raw-feedback
 ```
 
 Do not push changes directly to `main` unless the user explicitly requests it.
@@ -624,4 +624,4 @@ Current immediate state:
 5. Real-model/GPU testing is deferred; local fixture/unit validation continues.
 6. The approved next implementation scope is the raw-feedback branch described in `ROADMAP.md`.
 
-Continue implementation from `experiments/raw-feedback`; preserve this branch as the baseline checkpoint.
+Implement only the raw-feedback/offline-resume scope assigned to this branch in `ROADMAP.md`. Preserve `experiments/real-software-v1` as the baseline checkpoint.
