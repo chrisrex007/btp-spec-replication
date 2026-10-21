@@ -117,11 +117,15 @@ The baseline intentionally contains **no repair loop**.
 
 ## Planned research comparison
 
-The intended main comparison is:
+The intended final comparison is:
 
 1. no-feedback/spec-only baseline,
 2. raw failure feedback,
-3. abstract failure feedback.
+3. abstract failure feedback,
+4. path/trace feedback.
+
+The three feedback-loop approaches are therefore **raw**, **abstract**, and
+**path/trace**.
 
 Raw feedback is expected to contain:
 
@@ -131,6 +135,10 @@ Raw feedback is expected to contain:
 
 Abstract feedback will be produced by an LLM that groups/summarizes failure
 patterns into behavioural classes.
+
+Path/trace feedback adds a compact execution path from the **generated
+candidate** for failing development inputs. The reference program remains
+black-box; never assume or expose an internal reference execution path.
 
 When repair is implemented, repair the **current candidate directly**:
 
@@ -154,8 +162,9 @@ Do **not** reintroduce the old methodology of:
 
 Those were intentionally removed from the repository.
 
-Execution-trace feedback is a possible later extension, not part of the current
-core experiment.
+Path/trace feedback is part of the final core experiment, alongside raw and
+abstract feedback. It is implemented later in the `experiments/feedback-variants`
+branch; exact Python/C++ tracing mechanisms must be reviewed there.
 
 ---
 
@@ -611,7 +620,7 @@ Keep commits focused and descriptive.
 
 ## What to work on next
 
-`ROADMAP.md` is the source of truth for the deferred-GPU continuation plan. Use at most the five work branches described there. The next implementation branch is `experiments/raw-feedback`.
+`ROADMAP.md` is the source of truth for the deferred-GPU continuation plan. The final experiment is baseline vs raw vs abstract vs path/trace. Use at most the five work branches described there. The current implementation branch is `experiments/raw-feedback`.
 
 Do not assume the next step is live testing.
 
@@ -622,6 +631,7 @@ Current immediate state:
 3. PARAM Shakti GPU access has been approved; local open-weight model serving is the next infrastructure step.
 4. Ten real-software pilot benchmarks are being prepared on the experiment branch.
 5. Real-model/GPU testing is deferred; local fixture/unit validation continues.
-6. The approved next implementation scope is the raw-feedback branch described in `ROADMAP.md`.
+6. The final research destination compares three feedback approaches: raw, abstract, and candidate path/trace, against the no-feedback baseline.
+7. The approved current implementation scope is the raw-feedback branch described in `ROADMAP.md`.
 
 Implement only the raw-feedback/offline-resume scope assigned to this branch in `ROADMAP.md`. Preserve `experiments/real-software-v1` as the baseline checkpoint.
