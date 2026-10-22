@@ -1,90 +1,98 @@
-# BTP Specification-Replication Framework — v1 Contract
+# Specification-replication contract
 
-## Goal
+## Task boundary
 
-Given a natural-language specification and a black-box reference executable,
-synthesize a replacement program whose observable stdin/stdout behaviour matches
-the reference implementation. The offline runner implements raw-feedback
-repair. Implementation status and empirical validation are separate; agents
-must not execute the pipeline or its target programs. The user validates using commands
-maintained in `README.md`.
+Replicate the observable behaviour of a deterministic stdin/stdout program from
+its natural-language specification and input-format description. Reference
+commands remain private to the evaluator. Candidates may be Python or C++20.
+There are no HTTP/GUI targets or stateful sessions, and no reference inspection.
 
-## v1 execution contract
+Each case is a complete UTF-8 stdin string. Capture stdout/stderr as bytes and
+decode with UTF-8 `surrogateescape` without newline translation. Successful
+stdout equality is byte-exact; stderr never affects equality. ASCII-escaped JSON
+preserves these values losslessly. Launch errors, timeouts and nonzero exits are
+failures. Any reference failure invalidates task accuracy rather than scoring
+it as candidate failure. Generated candidate environments exclude parent secrets;
+full OS isolation is separate future work.
 
-- Every benchmark target is a deterministic command-line program.
-- A test case is a complete string supplied to the program on standard input.
-- Programs return their observable answer on standard output.
-- Standard error is captured for diagnostics but is not part of output equality.
-- A run is unsuccessful if it cannot be launched, times out, or exits non-zero.
-- For successful runs, v1 uses exact stdout equality. More flexible comparators
-  are intentionally deferred.
+## Shared direct inference
 
-## Candidate programs
+`offline_runtime.py` resolves only local directories/cached snapshots, sets
+offline flags before loading libraries, records model/runtime identity and owns
+one lazy vLLM engine per invocation. Sampling uses `StructuredOutputsParams` JSON
+schemas. No HTTP fallback, default model, downloads or remote custom code.
+Both entrypoints use the same runtime options and default sampling parameters.
+Requests include the actual schema, seed, prompts, temperatures and output limit.
+Successes and failures are recorded with timing and available token counts.
 
-- Candidate source code is represented independently of how it is built or run.
-- v1 supports Python and C++ candidates.
-- The generator may choose either supported language.
-- Python candidates are executed with the current Python interpreter.
-- C++ candidates are compiled with a C++20 compiler before execution.
+Prompt tokens are counted after chat formatting and passed directly to vLLM.
+Prompt length plus reserved output must fit the configured context. Full-feedback
+overflow is terminal and preserves the request; it is never shortened.
 
-## Implemented baseline workflow
+## One-shot and raw workflows
 
-The implemented no-feedback baseline performs these steps:
+`pipeline.baseline` generates one candidate, builds it, generates/deduplicates
+stdin, evaluates and persists results. It has no repair or resume contract.
+`experiments/no-feedback` contains only this baseline and shared infrastructure.
 
-1. Load a natural-language specification and input-format description.
-2. Ask the configured LLM for one structured Python or C++ candidate.
-3. Build/materialize the candidate.
-4. Ask the LLM for complete stdin testcases.
-5. Run every testcase against both the black-box reference and candidate.
-6. Compare stdout exactly and persist results, failures, logs, and baseline score.
+`pipeline.offline_batch` owns independent task state machines:
 
-No black-box failures are shown back to the LLM in this baseline.
+```text
+initial request -> saved response -> parse/build candidate
+                -> stdin request -> saved response -> fixed unique stdin set
+                -> evaluate -> no failures / exhausted budget / invalid reference
+                            -> all raw failures + latest candidate
+                            -> repair request -> saved response -> parse/build
+                            -> evaluate against the same stdin set -> ...
+```
 
-## Feedback workflow and continued development
+The required repair budget counts replacements, excluding initial round zero.
+All eligible failures retain input order. Raw payloads contain input, status,
+reference stdout and candidate stdout. Repair schemas restrict the language to
+the current candidate's language; parsing checks it again. Malformed responses,
+language changes and build failures stop the task. There is no rollback,
+best-candidate selection, diagnostic-based repair or implicit retry.
 
-The offline batch runner repairs the current candidate using raw differential
-failures and reuses its development tests across iterations. It checkpoints
-inference responses and experiment stages, and uses one in-process vLLM model.
-Its presence does not establish empirical validation.
+## Persistence and resume
 
-The final research comparison has four arms:
+`artifacts.py` provides lossless JSON, atomic publication and hashing;
+`checkpoints.py` enforces schema-2 state and artifact integrity. Metadata freezes
+source/prompts, runtime/model identity, ordered task snapshots, output path and
+options. State records stage, attempted iteration, last evaluated iteration and
+hashes for committed artifacts. Older schemas and changed/missing artifacts are
+rejected without migration or overwrite.
 
-- baseline: the frozen initial candidate, without repair;
-- raw feedback: input + reference output + candidate output;
-- abstract feedback: an LLM-generated summary of supported failure patterns;
-- path/trace feedback: raw failures plus the current candidate's execution path.
+Requests are committed before inference. Successful responses are committed
+before state advances. An interrupted request stage can adopt its saved matching
+response; a response stage can repeat parsing/materialization without inference.
+Committed builds/evaluations are reused. Uncommitted work can be repeated on
+explicit resume. No engine is initialized unless uncached inference remains.
+Requests at different stages/rounds are grouped by schema and sampling settings,
+including seed. Builds/evaluations may run across tasks in a thread pool.
 
-All arms share one frozen initial candidate per task/seed, the same development
-and held-out pools, and relevant model configuration. Repair arms share maximum
-repair rounds and stopping rules. Each repairs its own current candidate through
-shared feedback preparation, repair, build, evaluation and persistence stages.
-Abstraction and trace overhead are accounted for separately.
+Every produced round retains source, build and available evaluation artifacts.
+Malformed replacements retain their raw responses. Failed repairs have null
+final accuracy and a separate last-evaluated score; no earlier candidate is
+silently presented as the final successful replacement. Reference failures have
+null accuracy even when some cases passed. Root summaries expose per-task state
+without inventing aggregate accuracy.
 
-Path/trace feedback is core planned scope. A shared collector interface will
-support Python and C++, producing compact normalized traces tied to candidate
-and input identities. Traces are stored separately from stdout, with explicit
-errors and truncation. The reference is never traced or instrumented. Scoring
-always uses the normal uninstrumented candidate; tracing only supplies feedback.
+Checksums detect changed checkpoint contents; they do not authenticate against
+an actor rewriting files and hashes together. Model metadata is hashed, while
+large weights use snapshot/file-stat identity. Reference/model assets must remain
+immutable. Diagnostic append-only logs are not checkpoint authorities.
 
-The [roadmap](docs/ROADMAP.md) defines the agreed five-phase branch order:
-no-feedback, raw feedback, abstract feedback, candidate path/trace feedback, and
-comparison/reporting. Raw-feedback strategy extraction is already present;
-unfinished comparison and pool work is preserved as a WIP checkpoint. Abstract
-and path/trace strategies, complete four-arm integration, and final reporting
-remain planned work.
+## Scope and validation
 
-Completing the roadmap is the highest-priority implementation goal. The user has
-asked to wait for phase review before further implementation. Material research
-choices, including tracing mechanisms and the placement of shared comparison
-infrastructure, remain subject to that review. Deployment and testing environment
-details are deferred; preserve the `.env` format documented in `README.md`.
+Raw implementation is prepared for user validation; no empirical success is
+claimed. Agents inspect source/diffs only, without pipeline execution, model
+loading, downloads, compilation or program execution. User commands, artifact
+layout, stopping reasons, exit codes and later scenarios live in `README.md`.
+No automated harness checks or bundled fixtures are included.
 
-## Explicitly out of scope for v1
-
-- HTTP/API interaction
-- GUI interaction
-- Stateful sessions
-- Reference execution tracing
-- Advanced test-generation strategies
-- Non-deterministic targets
-- Languages other than Python and C++
+Comparison/pools, abstract feedback and candidate tracing are deferred to their
+reviewed phases in [the roadmap](docs/ROADMAP.md). Their removed WIP source remains
+in history. The later four-arm comparison must freeze initial candidates, share
+development/held-out pools, keep held-out results out of repair, and account for
+abstraction/tracing overhead separately. Trace only candidates, never references;
+normal uninstrumented execution remains the scoring source.

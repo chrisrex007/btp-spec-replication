@@ -1,67 +1,79 @@
-# Roadmap for baseline, raw, abstract, and path/trace comparison
+# Roadmap: baseline, raw, abstract, path/trace and comparison
 
 Updated: 2026-10-22.
 
-The final experiment compares **no-feedback baseline vs raw feedback vs abstract
-feedback vs candidate path/trace feedback**. Candidate tracing is core scope;
-the reference remains a black box.
+Completing this roadmap remains the highest implementation priority. Work is
+reviewed one phase at a time; the raw-feedback readiness plan is approved.
+Future phases still require review before implementation. Source availability
+does not establish empirical validation.
 
-Completing this roadmap is the highest-priority implementation goal. The user
-has approved the five-phase branch organization and asked to wait for phase
-review before further implementation. This does not authorize implementing all
-phases now. Existing code is not evidence of completed phase review or empirical
-validation.
+## Five branches in order
 
-Validation is user-managed. Agents must not execute the pipeline or its target
-programs. Keep user-run pipeline commands in repository-root `README.md`.
-Do not add automated harness checks unless the user explicitly asks. Deployment
-details are deferred. Report implementation completion and empirical validation
-separately; unexecuted checks remain pending.
-
-## Branch budget and order
-
-Use **five phase branches total, six including `main`**. Tags do not add branches.
-Create future branches only when their work starts; do not create one branch per
-module or fix.
-
-| Order | Branch | Scope |
+| Order | Branch | Scope and current status |
 | --- | --- | --- |
-| 1 | `experiments/no-feedback` | Spec-only baseline without a feedback or repair loop |
-| 2 | `experiments/raw-feedback` | Raw failure feedback and direct repair of the current candidate |
-| 3 | `experiments/abstract-feedback` | LLM abstraction of failure patterns within the shared repair loop |
-| 4 | `experiments/path-feedback` | Python/C++ candidate tracing for failing inputs within the shared repair loop |
-| 5 | `experiments/comparison` | Four-arm comparison, metrics, regressions, token/runtime accounting, and reproducible reports |
+| 1 | `experiments/no-feedback` | One generated candidate, local inference, one evaluation; shared runtime prerequisite implemented separately; user validation pending |
+| 2 | `experiments/raw-feedback` | Current phase: local raw repair, complete feedback, schema-2 resume, artifacts and cleanup implemented for user validation |
+| 3 | `experiments/abstract-feedback` | Planned: LLM abstraction of failure patterns in direct repair |
+| 4 | `experiments/path-feedback` | Planned: Python/C++ candidate-only trace feedback in direct repair |
+| 5 | `experiments/comparison` | Planned: four-arm integration, shared pools, metrics and reproducible reporting |
 
-Review each implementation phase and settle its material research choices before
-coding it. All arms must share frozen initial candidates, development/held-out
-pools, and relevant model configuration, as required by `AGENTS.md`. Decide the
-placement of unfinished shared infrastructure during phase review.
+Use five phase branches total, six including `main`. Create future branches
+only when reviewed work starts. Stack continuations from the preceding completed
+source checkpoint, deliberately carrying shared fixes forward. Do not merge,
+push or create later branches automatically. Historical commits/tags remain
+unchanged; record exact revisions actually validated by the user.
 
-The baseline-only branch starts from the existing `main` source checkpoint
-`3fd3ca7`. Raw-feedback source was checkpointed at `1436319`. Obsolete local
-branch names have been removed; historical commits and checkpoint tags remain.
-Unfinished comparison/pool work is preserved as a WIP checkpoint without treating it as approved
-implementation. The abstract, path, and comparison branches will be created when
-their reviewed work starts.
+## Current raw readiness delivery
 
-Stack each continuation branch from the preceding completed source checkpoint.
-This carries shared infrastructure forward and permits testing each historical
-snapshot independently. Do not merge into `main`, push, or create later branches
-automatically. Fixes discovered by later user testing must also be carried into
-the active continuation branch deliberately; keep historical checkpoint tags
-unchanged and record the revision actually retested.
+- The no-feedback local-only runtime prerequisite was committed on its own
+  branch (`052630f`), with shared source selectively carried into raw. Keep the
+  baseline branch free of raw repair orchestration.
+- Both workflows require a local directory/already cached `BTP_MODEL`, use
+  direct structured vLLM inference, set offline flags before imports and never
+  download missing weights. One lazy model is reused per invocation.
+- Raw requires an explicit replacement budget, includes every eligible failure
+  in input order and reuses one deduplicated stdin set. It repairs the current
+  candidate in the same language, without rollback, best-candidate selection,
+  compiler feedback, silent truncation or implicit retries.
+- Stdout remains lossless through exact comparison and JSON persistence. Any
+  reference failure invalidates the task with null accuracy.
+- Schema-2 checkpoints commit requests/responses before stage changes, hash
+  artifacts, reject corruption/older checkpoints and reuse persisted inference.
+  Attempted and last-evaluated rounds remain distinct on failed replacements.
+- Active comparison/pool modules, HTTP client, unused shell attributes and
+  obsolete configuration/guidance are removed. WIP comparison/pool code remains
+  available in history, including `595c1e0`; it is not approved active work.
+- README supplies user start/resume commands, exact formats, defaults,
+  artifacts, stopping reasons, exit codes, troubleshooting and later scenarios.
 
-## What remains outside this plan
+Implementation and source-only inspection establish **ready for your testing**.
+Model/runtime compatibility and behavioural outcomes remain empirically pending
+until the user runs their own tasks. Validation discoveries must be carried
+deliberately into the active continuation branch and, where shared, baseline.
 
-Reference tracing, specification rewriting, advanced testcase generation, new
-languages/interfaces, distributed serving, and HTTP model hosting are outside
-the current experiment. Stronger OS sandboxing remains separate future work;
-continue to sanitize generated candidate environments in every arm.
+## Later phase contracts
+
+All four arms must share a frozen initial candidate per task/seed, development
+and held-out pools and relevant model configuration. Repair arms share maximum
+round budgets and stopping rules; record abstraction/tracing overhead separately.
+Held-out outcomes must never influence filtering, feedback or repair. Shared
+comparison/pool implementation belongs to the later reviewed scope.
+
+Abstract feedback summarizes supported raw failure patterns. Path feedback adds
+compact normalized traces of the current candidate, with Python/C++ collectors,
+separate trace artifacts, collection errors and truncation records. Never inspect
+or instrument the reference. Score only uninstrumented candidate executions.
+Choose tracing mechanisms during path-feedback review.
+
+Do not restore rule generation, triage, specification rewriting or indirect
+regeneration. Reference tracing, new languages/interfaces, advanced test
+generation, serving/deployment scaffolding and full OS isolation are outside the
+current phase. Preserve sanitized candidate environments and private config.
 
 ## User-owned validation
 
-The user will test each phase's source checkpoint using the commands in
-`README.md`. Agents must not execute those commands. Separate checkpoints make
-historical implementations independently testable; stacked branches can still
-inherit earlier defects. Record the exact revision tested and carry fixes into
-later phases deliberately.
+Agents must not run the pipeline, compile/run target programs, load models or
+download weights. Do not recreate automated harness suites or bundled benchmarks.
+Agents inspect source and diffs. The user runs the root README commands and
+records source/model/runtime identity with results. Never infer empirical
+success from implementation, saved source or historical checkpoints.

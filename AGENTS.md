@@ -1,309 +1,102 @@
 # AGENTS.md
 
-## Purpose
+## Purpose and phase
 
-This repository is a research prototype for **specification-driven black-box program replication**.
+This is a research prototype for specification-driven black-box program
+replication. Given a specification, valid stdin description and hidden reference
+executable, synthesize a program with equivalent observable behaviour. Recovering
+source code or reconstructing algorithms is not the goal.
 
-Given:
+The active branch is `experiments/raw-feedback`. The approved current phase is
+to finish raw repair for user validation, including local inference, reliable
+checkpoints, cleanup and documentation. `experiments/no-feedback` remains a
+separate one-shot baseline with shared runtime fixes and no raw repair code.
+The agreed next phases are abstract feedback, path/trace feedback, then comparison
+as recorded in `docs/ROADMAP.md`. Their implementation requires phase review.
+Comparison/pool work is preserved in Git history, not active source.
 
-1. a natural-language specification,
-2. a black-box reference executable whose source is unavailable, and
-3. a description of the valid stdin format,
+## Research contract
 
-the system asks an LLM to synthesize a replacement program and evaluates whether
-the generated program matches the reference program's observable behaviour.
+- Targets are deterministic command-line programs; candidates use Python or
+  C++20, chosen by the initial generation model.
+- A case is one complete UTF-8 stdin string. Compare successful stdout by exact
+  bytes, preserving line endings and invalid UTF-8 through JSON persistence.
+  Stderr is diagnostic only.
+- Launch failure, timeout or nonzero exit is unsuccessful. Any reference failure
+  invalidates the task (`invalid_reference`, `accuracy: null`) and prevents repair.
+- The only model-visible task fields are specification and input format. Output
+  behaviour belongs in the specification. Never expose private reference commands
+  or task names in generation prompts; never inspect the reference's source.
+- Generate/deduplicate stdin once and reuse it in every round. Include all
+  eligible failures in original input order; no feedback-case cap.
+- Repair the latest candidate directly from specification + current candidate +
+  raw input/status/reference stdout/candidate stdout. Retain its language.
+- Require an explicit nonnegative repair budget. Zero evaluates only the initial
+  candidate. Stop on success, exhausted budget, malformed replacement, language
+  change, build failure, invalid reference or complete-request context overflow.
+- No rollback, best-candidate selection, compiler-diagnostic feedback, implicit
+  inference retries, rewritten specifications, rule generation or triage.
+- Keep attempted and last-evaluated rounds distinct. A failed replacement must
+  not inherit a successful final score from an earlier candidate.
 
-The research goal is **behavioural equivalence**, not source-code recovery or
-algorithm reconstruction.
+## Runtime and persistence
 
----
+Use direct in-process vLLM `LLM`, `SamplingParams` and
+`StructuredOutputsParams`, with one lazy model per invocation. There is no HTTP
+transport. Require only `BTP_MODEL` in `.env`: a local directory or already cached
+identifier, without a fallback model. Set offline flags before importing model
+libraries; resolve cache entries with `local_files_only=True`. Missing weights
+must fail without download; remote custom code is disabled.
 
-## Current project state
+Shared defaults: seed 42, generation/repair temperature 0.2, stdin temperature
+0.6, output limit 4096, context limit 8192, dtype auto, tensor parallelism 1.
+No default repair budget. README documents every other CLI option.
 
-The agreed five-phase order is no-feedback, raw feedback, abstract feedback,
-candidate path/trace feedback, and comparison/reporting. See `docs/ROADMAP.md`
-for branch names and scope.
+Checkpoint schema is 2. Save requests before inference and successful responses
+before advancing state; publish artifacts/state atomically. Hash checkpoint
+artifacts and reject tampering or incompatible/older checkpoints without
+overwriting them. Resume cached successful inference before loading the model.
+Batch only requests with compatible schema and sampling settings.
+Record prompts, schemas, model identity, runtime versions, sampling settings,
+latency, errors and available token counts. Output defaults to ignored `runs/`.
+Exit codes are 0 for normal completion including exhausted budgets, 2 for setup
+or task failures, and 130 for interruption.
 
-`experiments/no-feedback` preserves the existing baseline-only source checkpoint.
-The current checkout is `experiments/raw-feedback`, which already contains raw
-repair. Unfinished comparison and testcase-pool work is preserved as a WIP
-checkpoint on that branch; its presence does not mean its phase has been reviewed
-or completed.
-
-The roadmap is the highest-priority implementation goal, but the user has asked
-to wait for phase review before further implementation. Branch organization is
-agreed; individual implementation phases and material research choices still
-require review. Preserve existing work and historical commits.
-
-## Core research contract
-
-Every target is a deterministic command-line program. Generated candidates may
-use:
-
-- Python
-- C++20
-
-The LLM may choose between those supported languages.
-
-A test case is a complete stdin string.
-
-For successful executions, output comparison is currently **exact stdout
-equality**.
-
-`stderr` is diagnostic only.
-
-A candidate/reference execution is considered unsuccessful if it:
-
-- cannot be launched,
-- times out, or
-- exits with a non-zero status.
-
-Do not add HTTP, GUI, or stateful-session interfaces unless the user explicitly
-changes the project scope. Candidate execution tracing is approved as a feedback
-side-channel; scoring still uses the normal uninstrumented stdin/stdout program.
-
----
-
-## Current baseline pipeline
-
-The implemented no-feedback pipeline is:
-
-```text
-natural-language specification
-        |
-        v
-LLM candidate generation
-        |
-        v
-Python/C++ build or materialization
-        |
-        v
-LLM stdin test generation
-        |
-        v
-same stdin sent to reference + candidate
-        |
-        v
-exact stdout differential comparison
-        |
-        v
-persist run artifacts + baseline accuracy
-```
-
-The baseline intentionally contains **no repair loop**.
-
----
-
-## Planned research comparison
-
-The intended main comparison is:
-
-1. no-feedback/spec-only baseline,
-2. raw failure feedback,
-3. abstract failure feedback,
-4. candidate path/trace feedback.
-
-Raw feedback is expected to contain:
-
-- stdin,
-- black-box/reference stdout,
-- generated-program stdout.
-
-Abstract feedback will be produced by an LLM that groups/summarizes failure
-patterns into behavioural classes.
-
-Path/trace feedback adds a compact, normalized execution trace of the current
-candidate to raw failure feedback. Never inspect or instrument the reference.
-Provide Python and C++ collectors behind a common trace interface, persist
-traces separately from stdout, and record collection errors and truncation.
-Choose collection mechanisms during the path-feedback phase review.
-
-All four arms share the same frozen initial candidate per task/seed, development
-pool, held-out pool, and relevant model configuration. Repair arms share the
-same maximum iteration budget and stopping rules. Record abstraction inference
-and tracing overhead separately; equal repair rounds do not imply equal compute.
-Held-out outcomes must never influence filtering, feedback, or repair.
-
-The shared repair loop must repair the **current candidate directly**:
-
-```text
-specification + current candidate + feedback
-                    |
-                    v
-               repair LLM
-                    |
-                    v
-             repaired candidate
-```
-
-Do **not** reintroduce the old methodology of:
-
-- rule generation,
-- rule completeness,
-- triage stages,
-- specification rewriting/refinement,
-- regenerating code indirectly through a rewritten specification.
-
-Those were intentionally removed from the repository.
-
-Abstract feedback belongs to `experiments/abstract-feedback`; candidate
-path/trace feedback belongs to the subsequent `experiments/path-feedback` phase.
-Both must use the shared direct-repair orchestration.
-
-## Task information boundary
-
-The separate `output_format` field has been removed.
-
-The LLM-visible task information is:
-
-- natural-language specification,
-- input-format description.
-
-Output behaviour must be described by the specification itself.
-
-The reference command in `task.json` is harness-private and must never be
-included in synthesis or testcase-generation prompts. Task names should also stay
-neutral/descriptive so future prompt changes do not accidentally reveal utility
-names.
-
-## Environment configuration
-
-Preserve the repository-root `.env` format: one `KEY=VALUE` entry per line,
-with optional comments and quoted values. The existing online client uses
-`BTP_MODEL`.
-`.env.example` contains placeholders only. Existing shell environment variables
-take precedence over `.env` values. Never read, copy, or print private `.env`
-values merely to document the format.
-
-Cluster setup, hardware choices, scheduler commands, and deployment details
-are not current project guidance. Do not reconstruct removed infrastructure
-documentation or infer a required testing environment from historical files.
-
----
-
-## Run artifacts
-
-Generated experiment runs are written under:
-
-```text
-runs/<run-id>/
-```
-
-and are ignored by Git.
-
-Current run artifacts may include:
-
-```text
-specification.txt
-task.json
-candidate/
-  metadata.json
-  main.py or main.cpp
-  program
-build.json
-tests.json
-results.json
-failures.json
-summary.json
-llm_log.jsonl
-```
-
-Some of these are redundant by design for experiment inspection/reproducibility.
-Do not aggressively remove run artifacts unless the user asks.
-
-Do not commit ordinary generated runs.
-
-Curated experimental results can be introduced later under a deliberate,
-versioned results structure.
-
----
+Preserve redundant inspection artifacts, private configuration, model caches,
+existing runs and historical commits. Do not remove ordinary runs as cleanup.
 
 ## Development rules
 
-### Keep changes phase-scoped
+Completing the agreed roadmap is the highest priority, one approved phase at a
+time. Ask about material research choices or conflicts across Markdown files;
+continue independent authorized work while awaiting clarification. Do not
+re-ask decisions already settled above.
 
-The user prefers to review the project **one phase at a time**.
+**The user performs validation.** Agents must not execute the pipeline, load
+models, download weights, compile/run candidates or execute reference programs.
+Do not add or recreate automated harness checks, test directories or bundled
+benchmarks. Source/diff inspection is permitted. Keep exact user-run commands,
+requirements, artifacts, failure handling and later validation scenarios in the
+root `README.md`. Report implementation and empirical validation separately.
+Never fabricate accuracy, performance or experimental results.
 
-Do not jump ahead and implement future research phases without explicit
-approval.
+Prefer the standard library, small modules, dataclasses and explicit JSON.
+Remove orphan imports and obsolete comments when deleting source. Do not restore
+removed deployment/scheduler infrastructure. Abstract feedback, tracing and
+comparison/pool integration are outside this phase.
 
-For a new phase:
+For later comparison, all four arms must share a frozen initial candidate per
+task/seed, development and held-out pools and relevant model configuration.
+Repair arms share round budgets/stopping rules; abstraction and tracing overhead
+must be recorded separately. Held-out outcomes must not influence repair.
+Candidate-only tracing is a planned feedback side-channel; never trace the
+reference, and score the uninstrumented candidate.
 
-1. explain the phase,
-2. get feedback/approval,
-3. implement only the approved scope,
-4. update user-run pipeline commands and artifact documentation,
-5. report exactly what changed.
+Generated code is untrusted. Never expose parent secrets to its environment.
+Never read/copy/print private `.env` for documentation; preserve its format of
+one `KEY=VALUE` per line with comments/optional quotes and shell precedence.
+Edit only `.env.example` and documentation. Do not commit `.env`, secrets,
+model weights, ordinary runs, bytecode or temporary build output.
 
-### Implementation priority and documentation conflicts
-
-The highest-priority implementation goal is to complete the agreed scope of
-`docs/ROADMAP.md`, following the phase-review rules above. Do not silently omit
-required roadmap capabilities or introduce unrelated work.
-
-If Markdown files disagree about scope, phase order, branch organization,
-research methodology, or what to do or avoid, identify the conflict and ask the
-user before implementing the affected work. Continue independent, already
-authorized work while awaiting clarification.
-
-### User-managed validation
-
-Do not add automated harness checks unless the user explicitly asks. Agents must
-not execute the pipeline, benchmarks, or generated and reference programs.
-Agents may inspect source and diffs. Keep exact user-run pipeline commands,
-prerequisites, and expected artifacts in repository-root `README.md`.
-
-Report implementation and validation separately. State that the pipeline was not
-executed by the agent; claim validation only from user-provided results.
-
-### Ask on material research choices
-
-If a decision could materially affect experimental validity, ask the user
-instead of silently selecting an approach.
-
-Do not re-ask decisions already settled in this file.
-
-### Keep implementation simple
-
-Prefer:
-
-- Python standard library,
-- small modules,
-- dataclasses for structured results,
-- explicit JSON artifacts,
-- deterministic interfaces,
-- dependency-free infrastructure where practical.
-
-Avoid introducing frameworks or abstractions that are not yet necessary.
-
-### Preserve reproducibility
-
-Whenever an LLM is involved, retain enough metadata to reconstruct the call.
-
-Do not claim an experiment succeeded unless it was actually executed.
-
-Never fabricate performance numbers, behavioural accuracy, or experimental
-results.
-
-### Protect secrets
-
-Generated LLM code is untrusted.
-
-Do not expose parent environment secrets to generated candidates.
-
-Do not commit:
-
-- `.env`,
-- API keys,
-- secrets,
-- ordinary `runs/`,
-- generated bytecode,
-- temporary build output.
-
-
-Do not push changes directly to `main` unless the user explicitly requests it.
-
-Do not merge a pull request or branch automatically unless the user explicitly
-asks.
-
-Keep commits short and focused.
+Keep commits focused. Do not merge or push automatically, and never push to
+`main` without an explicit request.
