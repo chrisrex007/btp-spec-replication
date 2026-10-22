@@ -54,16 +54,15 @@ to the harness and is never included in generation prompts.
 
 ## Commands for user-run validation
 
-The bundled `benchmarks/double/` fixture is a plumbing smoke test. After privately
-configuring your endpoint, run:
+Supply your own task JSON, specification, and black-box reference executable.
+After privately configuring your endpoint, replace `path/to/task.json` below
+with your actual task path and run the command yourself from the repository root:
 
 ```bash
-python -m pipeline.baseline benchmarks/double/task.json --tests 10 --seed 42
+python -m pipeline.baseline path/to/task.json --tests 10 --seed 42
 ```
 
-For another task, replace `benchmarks/double/task.json` with its JSON path. The
-pipeline command makes model calls and executes the reference and candidate.
-Smoke-test accuracy does not establish performance on difficult tasks.
+The pipeline command makes model calls and executes the reference and candidate.
 
 ## Comparison and scoring
 
