@@ -25,7 +25,7 @@ def _deduplicate_preserving_order(items: list[str]) -> list[str]:
 def test_generation_request(
     *, specification: str, input_format: str, count: int
 ) -> tuple[str, str, dict]:
-    """Build prompts and schema shared by online and offline test generation."""
+    """Build basic stdin-generation prompts and schema."""
 
     if count <= 0:
         raise ValueError("count must be positive")
@@ -53,15 +53,22 @@ def test_generation_request(
     return system_prompt, user_prompt, schema
 
 
-def parse_tests_response(raw: str) -> list[str]:
+def parse_tests_response(raw: str, expected_count: int | None = None) -> list[str]:
     """Parse test inputs and remove exact duplicates, preserving order."""
 
-    tests = json.loads(raw)["tests"]
+    value = json.loads(raw)
+    if not isinstance(value, dict) or set(value) != {"tests"}:
+        raise ValueError("LLM test response must contain only a tests array")
+    tests = value["tests"]
     if not isinstance(tests, list) or not all(isinstance(item, str) for item in tests):
         raise ValueError("LLM test response must contain a string array")
+    if expected_count is not None and len(tests) != expected_count:
+        raise ValueError(f"Expected {expected_count} stdin cases before deduplication; received {len(tests)}")
     unique = _deduplicate_preserving_order(tests)
     if not unique:
         raise ValueError("LLM produced no usable testcases")
+    for value in unique:
+        value.encode("utf-8")
     return unique
 
 
@@ -73,6 +80,8 @@ def generate_tests(
     run_dir: str | Path,
     target: str,
     seed: int = 42,
+    temperature: float = 0.6,
+    max_tokens: int = 4096,
     call_fn: Callable[..., str] = logged_call,
 ) -> list[str]:
     """Generate complete stdin payloads and remove exact duplicates."""
@@ -90,10 +99,10 @@ def generate_tests(
         iteration=0,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
-        temperature=0.6,
-        max_tokens=12000,
+        temperature=temperature,
+        max_tokens=max_tokens,
         seed=seed,
         json_schema=schema,
         schema_name="test_inputs",
     )
-    return parse_tests_response(raw)
+    return parse_tests_response(raw, count)

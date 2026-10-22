@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-import json
 from pathlib import Path
 from typing import Iterable, Sequence
 
 from .execution import ExecutionResult, run_program
+from .artifacts import atomic_json
 
 
 class ComparisonStatus(str, Enum):
@@ -46,7 +46,7 @@ def compare_results(
     reference: ExecutionResult,
     candidate: ExecutionResult,
 ) -> DifferentialResult:
-    """Classify one pair of executions using exact stdout equality."""
+    """Compare losslessly decoded stdout, preserving every original byte."""
 
     if reference.timed_out:
         status = ComparisonStatus.REFERENCE_TIMEOUT
@@ -129,7 +129,19 @@ def write_results(path: str | Path, results: Iterable[DifferentialResult]) -> No
     """Persist differential results as human-readable JSON."""
 
     payload = [result.to_dict() for result in results]
-    Path(path).write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    atomic_json(path, payload)
+
+
+def summarize_results(results: list[DifferentialResult]) -> dict:
+    reference_failures = sum(not result.reference.succeeded for result in results)
+    passed = sum(result.passed for result in results)
+    valid = len(results) - reference_failures
+    return {
+        "status": "invalid_reference" if reference_failures else "completed",
+        "n_total": len(results), "n_valid": valid,
+        "n_reference_failures": reference_failures, "n_pass": passed,
+        "n_fail": valid - passed,
+        "accuracy": passed / len(results) if results and not reference_failures else None,
+        "status_counts": {status.value: sum(r.status is status for r in results)
+                          for status in ComparisonStatus if any(r.status is status for r in results)},
+    }

@@ -25,7 +25,7 @@ CANDIDATE_SCHEMA = {
 
 
 def candidate_messages(*, specification: str, input_format: str) -> tuple[str, str]:
-    """Build the prompts shared by hosted and offline candidate generation."""
+    """Build specification-only candidate prompts."""
 
     system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
     user_prompt = (
@@ -41,7 +41,12 @@ def candidate_messages(*, specification: str, input_format: str) -> tuple[str, s
 def parse_candidate_response(raw: str) -> CandidateSource:
     """Parse and validate a structured candidate response."""
 
-    return CandidateSource.from_dict(json.loads(raw))
+    value = json.loads(raw)
+    if not isinstance(value, dict) or set(value) != {"language", "filename", "source"}:
+        raise ValueError("Candidate response must contain language, filename and source only")
+    if not isinstance(value["filename"], str) or not value["filename"]:
+        raise ValueError("Candidate response must provide a filename")
+    return CandidateSource.from_dict(value)
 
 
 def generate_candidate(
@@ -51,6 +56,8 @@ def generate_candidate(
     run_dir: str | Path,
     target: str,
     seed: int = 42,
+    temperature: float = 0.2,
+    max_tokens: int = 4096,
     call_fn: Callable[..., str] = logged_call,
 ) -> CandidateSource:
     """Generate one Python or C++ stdin/stdout candidate."""
@@ -67,8 +74,8 @@ def generate_candidate(
         iteration=0,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
-        temperature=0.2,
-        max_tokens=8192,
+        temperature=temperature,
+        max_tokens=max_tokens,
         seed=seed,
         json_schema=CANDIDATE_SCHEMA,
         schema_name="candidate_program",

@@ -1,56 +1,33 @@
-"""Shared helper for logged LLM calls."""
-
-from __future__ import annotations
-
+"""Single-call adapter over an invocation-owned local inference session."""
 from pathlib import Path
 import time
 
-from . import llm_client, llm_log
+from .artifacts import atomic_json
+from .llm_log import log_call, request_record, response_record
+from .offline_runtime import InferenceRequest, InferenceSession, default_config
 
 
-def logged_call(
-    *,
-    run_dir: str | Path,
-    step: str,
-    target: str,
-    iteration: int,
-    system_prompt: str,
-    user_prompt: str,
-    temperature: float = 0.2,
-    max_tokens: int = 4096,
-    seed: int = 42,
-    json_schema: dict | None = None,
-    schema_name: str = "response",
-) -> str:
-    """Call the configured LLM and persist the complete request/response."""
-
-    run_path = Path(run_dir)
-    run_path.mkdir(parents=True, exist_ok=True)
-
+def logged_call(*, run_dir, step: str, target: str, iteration: int,
+                system_prompt: str, user_prompt: str, temperature: float = 0.2,
+                max_tokens: int = 4096, seed: int = 42, json_schema: dict | None = None,
+                schema_name: str = "response", session: InferenceSession | None = None) -> str:
+    session = session or InferenceSession(default_config())
+    request = InferenceRequest(target, step, iteration, system_prompt, user_prompt,
+                               json_schema or {}, temperature, max_tokens, seed, schema_name)
+    record = request_record(request, session.identity)
+    base = Path(run_dir) / "inference" / f"iteration-{iteration:03d}-{step}"
+    atomic_json(str(base) + ".request.json", record)
     started = time.monotonic()
-    response = llm_client.call(
-        system_prompt,
-        user_prompt,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        seed=seed,
-        json_schema=json_schema,
-        schema_name=schema_name,
-    )
-    latency_s = time.monotonic() - started
-
-    llm_log.log_call(
-        run_dir=run_path,
-        step=step,
-        target=target,
-        iteration=iteration,
-        model=llm_client.get_model(),
-        seed=seed,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        response=response,
-        latency_s=latency_s,
-    )
-    return response
+    try:
+        outputs = session.generate_batch([request])
+        if len(outputs) != 1 or not isinstance(outputs[0].response, str):
+            raise RuntimeError("Expected one string response from the local runtime")
+        response = response_record(record, outputs[0], latency_s=time.monotonic() - started)
+    except Exception as exc:
+        response = response_record(record, None, error=exc, latency_s=time.monotonic() - started)
+        atomic_json(str(base) + ".error.json", response)
+        log_call(Path(run_dir) / "llm_log.jsonl", record, response)
+        raise
+    atomic_json(str(base) + ".response.json", response)
+    log_call(Path(run_dir) / "llm_log.jsonl", record, response)
+    return outputs[0].response

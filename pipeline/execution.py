@@ -19,13 +19,17 @@ def _as_text(value: str | bytes | None) -> str:
     if value is None:
         return ""
     if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
+        return value.decode("utf-8", errors="surrogateescape")
     return value
 
 
 @dataclass(frozen=True)
 class ExecutionResult:
-    """Complete observable result of one program invocation."""
+    """One invocation, with output decoded losslessly using UTF-8 surrogateescape.
+
+    Encode stdout/stderr with the same codec and error handler to recover the
+    original bytes. JSON writers must escape surrogate code points.
+    """
 
     command: tuple[str, ...]
     stdin: str
@@ -86,11 +90,8 @@ def run_program(
     try:
         proc = subprocess.run(
             cmd,
-            input=stdin_data,
+            input=stdin_data.encode("utf-8"),
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             timeout=timeout_seconds,
             cwd=None if cwd is None else str(cwd),
             env=run_env,
@@ -100,8 +101,8 @@ def run_program(
         return ExecutionResult(
             command=cmd,
             stdin=stdin_data,
-            stdout=proc.stdout,
-            stderr=proc.stderr,
+            stdout=_as_text(proc.stdout),
+            stderr=_as_text(proc.stderr),
             exit_code=proc.returncode,
             timed_out=False,
             duration_s=time.monotonic() - started,

@@ -1,43 +1,28 @@
-"""JSONL logging for every LLM invocation."""
+"""Provenance for local inference requests, responses and failures."""
+from dataclasses import asdict
 
-from __future__ import annotations
-
-from datetime import datetime, timezone
-import json
-from pathlib import Path
+from .artifacts import append_jsonl, digest, utc_now
+from .offline_runtime import InferenceOutput, InferenceRequest
 
 
-def log_call(
-    run_dir: Path,
-    step: str,
-    target: str,
-    iteration,
-    model: str,
-    seed,
-    temperature,
-    max_tokens,
-    system_prompt: str,
-    user_prompt: str,
-    response: str,
-    latency_s: float,
-) -> None:
-    record = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "target": target,
-        "iteration": iteration,
-        "step": step,
-        "model": model,
-        "seed": seed,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "system_prompt": system_prompt,
-        "user_prompt": user_prompt,
-        "response": response,
-        "latency_s": latency_s,
+def request_record(request: InferenceRequest, runtime: dict) -> dict:
+    identity = {"request": asdict(request), "runtime": runtime}
+    return {"schema_version": 2, **identity, "fingerprint": digest(identity)}
+
+
+def response_record(request: dict, output: InferenceOutput | None, *,
+                    error: Exception | None = None, latency_s: float = 0.0,
+                    batch_id: str | None = None, batch_size: int = 1) -> dict:
+    payload = {
+        "schema_version": 2, "request_fingerprint": request["fingerprint"],
+        "timestamp": utc_now(), "status": "error" if error is not None else "success",
+        "output": asdict(output) if output is not None else None,
+        "error": {"type": type(error).__name__, "message": str(error)} if error is not None else None,
+        "error_prompt_tokens": getattr(error, "prompt_tokens", None),
+        "latency_s": latency_s, "batch_id": batch_id, "batch_size": batch_size,
     }
+    return {**payload, "content_sha256": digest(payload)}
 
-    run_path = Path(run_dir)
-    run_path.mkdir(parents=True, exist_ok=True)
-    log_path = run_path / "llm_log.jsonl"
-    with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+def log_call(path, request: dict, response: dict) -> None:
+    append_jsonl(path, {"request": request, "response": response})
