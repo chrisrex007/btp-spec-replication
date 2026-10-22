@@ -36,7 +36,8 @@ class CandidateSource:
 
         filename = self.filename or DEFAULT_FILENAMES[language]
         if (not isinstance(filename, str) or not filename or Path(filename).name != filename
-                or filename in {".", ".."} or any(c in filename for c in "\\/:")):
+                or filename in {".", ".."} or any(c in filename for c in "\\/:")
+                or any(ord(c) < 32 for c in filename)):
             raise ValueError("filename must be a plain file name, not a path")
         if not filename.endswith(SUPPORTED_LANGUAGES[language]):
             raise ValueError(

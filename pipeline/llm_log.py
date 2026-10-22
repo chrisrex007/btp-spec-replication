@@ -18,6 +18,7 @@ def response_record(request: dict, output: InferenceOutput | None, *,
         "timestamp": utc_now(), "status": "error" if error is not None else "success",
         "output": asdict(output) if output is not None else None,
         "error": {"type": type(error).__name__, "message": str(error)} if error is not None else None,
+        "error_prompt_tokens": getattr(error, "prompt_tokens", None),
         "latency_s": latency_s, "batch_id": batch_id, "batch_size": batch_size,
     }
     return {**payload, "content_sha256": digest(payload)}

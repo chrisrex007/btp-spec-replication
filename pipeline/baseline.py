@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import sys
 
-from .artifacts import atomic_json, implementation_digest, utc_now
+from .artifacts import atomic_bytes, atomic_json, implementation_digest, utc_now
 from .builder import build_candidate
 from .differential import run_differential_suite, summarize_results, write_results
 from .generator import generate_candidate
@@ -40,7 +40,7 @@ def run_baseline(task: BenchmarkTask, *, test_count: int = 20,
     stage = "setup"
     try:
         specification = task.read_specification()
-        (root / "specification.txt").write_bytes(specification.encode("utf-8"))
+        atomic_bytes(root / "specification.txt", specification.encode("utf-8"))
         atomic_json(root / "task.json", task.to_dict())
         session = InferenceSession(config)
         atomic_json(root / "metadata.json", {

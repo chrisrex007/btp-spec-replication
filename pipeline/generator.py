@@ -41,7 +41,12 @@ def candidate_messages(*, specification: str, input_format: str) -> tuple[str, s
 def parse_candidate_response(raw: str) -> CandidateSource:
     """Parse and validate a structured candidate response."""
 
-    return CandidateSource.from_dict(json.loads(raw))
+    value = json.loads(raw)
+    if not isinstance(value, dict) or set(value) != {"language", "filename", "source"}:
+        raise ValueError("Candidate response must contain language, filename and source only")
+    if not isinstance(value["filename"], str) or not value["filename"]:
+        raise ValueError("Candidate response must provide a filename")
+    return CandidateSource.from_dict(value)
 
 
 def generate_candidate(

@@ -18,12 +18,16 @@ def json_text(value: object) -> str:
 
 
 def atomic_json(path: str | Path, value: object) -> None:
+    atomic_bytes(path, json_text(value).encode("utf-8"))
+
+
+def atomic_bytes(path: str | Path, value: bytes) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     try:
-        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-            handle.write(json_text(value))
+        with temporary.open("wb") as handle:
+            handle.write(value)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)

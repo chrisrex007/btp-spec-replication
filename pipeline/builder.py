@@ -6,7 +6,9 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import sys
+import uuid
 
+from .artifacts import atomic_bytes
 from .candidate import CandidateSource
 from .execution import run_program
 
@@ -48,8 +50,8 @@ def build_candidate(
 ) -> BuildResult:
     """Materialize candidate and return the command used to run it.
 
-    Python is materialized without an explicit build step. C++ is compiled as
-    C++20 with optimization enabled. Build failures are returned as data.
+    Python is syntax-checked without executing it. C++ is compiled as C++20
+    with optimization enabled. Build failures are returned as data.
     """
 
     if compile_timeout_seconds <= 0:
@@ -58,7 +60,7 @@ def build_candidate(
     out_dir = Path(build_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     source_path = (out_dir / candidate.filename).resolve()
-    source_path.write_bytes(candidate.source.encode("utf-8"))
+    atomic_bytes(source_path, candidate.source.encode("utf-8"))
 
     if candidate.language == "python":
         try:
@@ -78,19 +80,26 @@ def build_candidate(
     compiler = cpp_compiler or os.environ.get("CXX", "g++")
     executable_name = "program.exe" if os.name == "nt" else "program"
     executable_path = (out_dir / executable_name).resolve()
+    temporary_executable = executable_path.with_name(
+        executable_path.stem + "." + uuid.uuid4().hex + executable_path.suffix)
     compile_command = (
         compiler,
         "-O2",
         "-std=c++20",
         str(source_path),
         "-o",
-        str(executable_path),
+        str(temporary_executable),
     )
-    result = run_program(
-        compile_command,
-        "",
-        timeout_seconds=compile_timeout_seconds,
-    )
+    try:
+        result = run_program(
+            compile_command,
+            "",
+            timeout_seconds=compile_timeout_seconds,
+        )
+        if result.succeeded:
+            os.replace(temporary_executable, executable_path)
+    finally:
+        temporary_executable.unlink(missing_ok=True)
 
     if not result.succeeded:
         return BuildResult(

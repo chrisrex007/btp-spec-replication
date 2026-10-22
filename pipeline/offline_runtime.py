@@ -6,6 +6,8 @@ from importlib import metadata
 import math
 import os
 from pathlib import Path
+import platform
+import sys
 import time
 
 from .artifacts import digest, file_digest
@@ -17,7 +19,10 @@ class RuntimeSetupError(RuntimeError):
 
 
 class ContextBudgetExceeded(ValueError):
-    pass
+    def __init__(self, message: str, request=None, prompt_tokens=None) -> None:
+        super().__init__(message)
+        self.request = request
+        self.prompt_tokens = prompt_tokens
 
 
 @dataclass(frozen=True)
@@ -133,6 +138,7 @@ def describe_runtime(config: RuntimeConfig) -> dict:
         "snapshot_revision": directory.name if directory.parent.name == "snapshots" else None,
         "model_manifest": manifest, "model_manifest_sha256": digest(manifest),
         "versions": versions, "settings": asdict(config),
+        "python": sys.version, "executable": sys.executable, "platform": platform.platform(),
     }
 
 
@@ -179,6 +185,16 @@ class OfflineVLLM:
         self.SamplingParams = SamplingParams
         self.StructuredOutputsParams = StructuredOutputsParams
         try:
+            SamplingParams(
+                max_tokens=config.max_tokens, seed=config.seed,
+                structured_outputs=StructuredOutputsParams(json={"type": "object"}),
+            )
+        except Exception as exc:
+            raise RuntimeSetupError(
+                "vLLM must support SamplingParams(structured_outputs=StructuredOutputsParams(json=...)): "
+                + str(exc)
+            ) from exc
+        try:
             self.llm = LLM(
                 model=identity["resolved_model"], tokenizer=identity["resolved_model"],
                 trust_remote_code=False, generation_config="vllm", dtype=config.dtype,
@@ -203,13 +219,16 @@ class OfflineVLLM:
                  {"role": "user", "content": request.user_prompt}],
                 tokenize=False, add_generation_prompt=True,
             )
-            count = len(self.tokenizer.encode(prompt, add_special_tokens=False))
+            token_ids = self.tokenizer.encode(prompt, add_special_tokens=False)
+            count = len(token_ids)
             if count + request.max_tokens > self.config.max_model_len:
                 raise ContextBudgetExceeded(
                     f"{request.task}/{request.step}: {count} prompt + {request.max_tokens} "
-                    f"output tokens exceeds context {self.config.max_model_len}; nothing was truncated"
+                    f"output tokens exceeds context {self.config.max_model_len}; nothing was truncated",
+                    request=request, prompt_tokens=count,
                 )
-            prompts.append(prompt)
+            # Send exactly the tokens counted above, without adding another BOS.
+            prompts.append({"prompt_token_ids": token_ids})
             counts.append(count)
         first = requests[0]
         params = self.SamplingParams(
