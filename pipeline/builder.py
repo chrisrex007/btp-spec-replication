@@ -58,9 +58,16 @@ def build_candidate(
     out_dir = Path(build_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     source_path = (out_dir / candidate.filename).resolve()
-    source_path.write_text(candidate.source, encoding="utf-8")
+    source_path.write_bytes(candidate.source.encode("utf-8"))
 
     if candidate.language == "python":
+        try:
+            compile(candidate.source, str(source_path), "exec")
+        except (SyntaxError, ValueError) as exc:
+            return BuildResult(
+                success=False, language=candidate.language, source_path=str(source_path),
+                run_command=None, error=f"{type(exc).__name__}: {exc}",
+            )
         return BuildResult(
             success=True,
             language=candidate.language,

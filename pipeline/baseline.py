@@ -1,223 +1,113 @@
-"""One-shot baseline replication run.
-
-The one-shot workflow is:
-specification -> candidate generation -> build -> test generation ->
-differential execution -> persisted baseline score.
-
-The candidate is generated once and evaluated without modification.
-"""
-
+"""Generate one candidate and evaluate it using direct local inference."""
 from __future__ import annotations
 
 import argparse
-from collections import Counter
-from datetime import datetime, timezone
+from functools import partial
 import json
 from pathlib import Path
-from typing import Callable
+import re
+import sys
 
+from .artifacts import atomic_json, implementation_digest, utc_now
 from .builder import build_candidate
-from .candidate import CandidateSource
-from .differential import (
-    ComparisonStatus,
-    DifferentialResult,
-    run_differential_suite,
-    write_results,
-)
+from .differential import run_differential_suite, summarize_results, write_results
 from .generator import generate_candidate
-from .llm_client import redact_diagnostic
+from .llm_runtime import logged_call
+from .offline_runtime import (
+    ContextBudgetExceeded, InferenceSession, RuntimeConfig,
+    add_runtime_arguments, config_from_args, default_config,
+)
 from .task import BenchmarkTask
 from .test_generator import generate_tests
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_RUN_ROOT = REPO_ROOT / "runs"
+DEFAULT_RUN_ROOT = Path(__file__).resolve().parents[1] / "runs"
 
 
-def _write_json(path: Path, value) -> None:
-    path.write_text(
-        json.dumps(value, ensure_ascii=True, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-
-def _default_run_id(task_name: str) -> str:
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"{task_name}-{stamp}"
-
-
-def _failure_payload(results: list[DifferentialResult]) -> list[dict]:
-    return [result.to_dict() for result in results if not result.passed]
-
-
-def _finalize_summary(run_dir: Path, summary: dict) -> dict:
-    _write_json(run_dir / "summary.json", summary)
+def run_baseline(task: BenchmarkTask, *, test_count: int = 20,
+                 run_root: str | Path = DEFAULT_RUN_ROOT, run_id: str | None = None,
+                 runtime_config: RuntimeConfig | None = None) -> dict:
+    config = runtime_config or default_config()
+    config.validate()
+    if type(test_count) is not int or test_count <= 0:
+        raise ValueError("test_count must be a positive integer")
+    selected_id = run_id or task.name + "-" + utc_now().replace(":", "").replace(".", "")
+    if selected_id in {".", ".."} or not re.fullmatch(r"[A-Za-z0-9._+-]+", selected_id):
+        raise ValueError("run_id must be a plain directory identifier")
+    root = Path(run_root).expanduser().resolve() / selected_id
+    root.mkdir(parents=True, exist_ok=False)
+    summary = {"run_id": selected_id, "task": task.name, "accuracy": None}
+    stage = "setup"
+    try:
+        specification = task.read_specification()
+        (root / "specification.txt").write_bytes(specification.encode("utf-8"))
+        atomic_json(root / "task.json", task.to_dict())
+        session = InferenceSession(config)
+        atomic_json(root / "metadata.json", {
+            "schema_version": 2, "runtime": session.identity,
+            "implementation_sha256": implementation_digest(), "created_at": utc_now(),
+        })
+        call = partial(logged_call, session=session)
+        stage = "candidate_generation"
+        candidate = generate_candidate(
+            specification=specification, input_format=task.input_format,
+            run_dir=root, target=task.name, seed=config.seed,
+            temperature=config.temperature, max_tokens=config.max_tokens, call_fn=call,
+        )
+        candidate_dir = root / "candidate"
+        atomic_json(candidate_dir / "metadata.json", candidate.to_dict())
+        stage = "build"
+        build = build_candidate(candidate, candidate_dir)
+        atomic_json(root / "build.json", build.to_dict())
+        if not build.success or build.run_command is None:
+            summary.update(status="build_failed", error=build.error or build.build_stderr)
+        else:
+            stage = "test_generation"
+            tests = generate_tests(
+                specification=specification, input_format=task.input_format, count=test_count,
+                run_dir=root, target=task.name, seed=config.seed + 100_000,
+                temperature=config.test_temperature, max_tokens=config.max_tokens, call_fn=call,
+            )
+            atomic_json(root / "tests.json", tests)
+            stage = "evaluation"
+            results = run_differential_suite(
+                task.reference_command, build.run_command, tests,
+                timeout_seconds=task.timeout_seconds, reference_cwd=task.reference_cwd,
+                candidate_cwd=candidate_dir,
+            )
+            write_results(root / "results.json", results)
+            atomic_json(root / "failures.json", [r.to_dict() for r in results if not r.passed])
+            summary.update(summarize_results(results), n_requested_tests=test_count,
+                           n_unique_tests=len(tests))
+    except KeyboardInterrupt:
+        summary.update(status="interrupted", stage=stage)
+    except Exception as exc:
+        status = "context_budget_exceeded" if isinstance(exc, ContextBudgetExceeded) else stage + "_failed"
+        summary.update(status=status, stage=stage, error=f"{type(exc).__name__}: {exc}")
+    atomic_json(root / "summary.json", summary)
     return summary
 
 
-def run_baseline(
-    task: BenchmarkTask,
-    *,
-    test_count: int = 20,
-    run_root: str | Path = DEFAULT_RUN_ROOT,
-    run_id: str | None = None,
-    seed: int = 42,
-    candidate_generator: Callable[..., CandidateSource] = generate_candidate,
-    tests_generator: Callable[..., list[str]] = generate_tests,
-) -> dict:
-    """Run one complete no-feedback baseline experiment.
-
-    Failures in candidate generation, building, or test generation are persisted
-    as run summaries rather than silently losing the experiment record.
-    """
-
-    if test_count <= 0:
-        raise ValueError("test_count must be positive")
-
-    specification = task.read_specification()
-    selected_run_id = run_id or _default_run_id(task.name)
-    run_dir = Path(run_root).resolve() / selected_run_id
-    run_dir.mkdir(parents=True, exist_ok=False)
-
-    (run_dir / "specification.txt").write_text(specification, encoding="utf-8")
-    _write_json(run_dir / "task.json", task.to_dict())
-
-    candidate_dir = run_dir / "candidate"
-    candidate_dir.mkdir()
-
-    try:
-        candidate = candidate_generator(
-            specification=specification,
-            input_format=task.input_format,
-            run_dir=run_dir,
-            target=task.name,
-            seed=seed,
-        )
-    except Exception as exc:
-        return _finalize_summary(
-            run_dir,
-            {
-                "run_id": selected_run_id,
-                "task": task.name,
-                "status": "candidate_generation_failed",
-                "error": redact_diagnostic(f"{type(exc).__name__}: {exc}"),
-                "accuracy": None,
-            },
-        )
-
-    _write_json(
-        candidate_dir / "metadata.json",
-        {
-            "language": candidate.language,
-            "filename": candidate.filename,
-        },
-    )
-
-    build = build_candidate(candidate, candidate_dir)
-    _write_json(run_dir / "build.json", build.to_dict())
-    if not build.success or build.run_command is None:
-        return _finalize_summary(
-            run_dir,
-            {
-                "run_id": selected_run_id,
-                "task": task.name,
-                "status": "build_failed",
-                "error": build.error,
-                "accuracy": None,
-            },
-        )
-
-    try:
-        tests = tests_generator(
-            specification=specification,
-            input_format=task.input_format,
-            count=test_count,
-            run_dir=run_dir,
-            target=task.name,
-            seed=seed,
-        )
-    except Exception as exc:
-        return _finalize_summary(
-            run_dir,
-            {
-                "run_id": selected_run_id,
-                "task": task.name,
-                "status": "test_generation_failed",
-                "error": redact_diagnostic(f"{type(exc).__name__}: {exc}"),
-                "accuracy": None,
-            },
-        )
-
-    _write_json(run_dir / "tests.json", tests)
-
-    results = run_differential_suite(
-        task.reference_command,
-        build.run_command,
-        tests,
-        timeout_seconds=task.timeout_seconds,
-        reference_cwd=task.reference_cwd,
-        candidate_cwd=candidate_dir,
-    )
-    write_results(run_dir / "results.json", results)
-    _write_json(run_dir / "failures.json", _failure_payload(results))
-
-    n_total = len(results)
-    n_pass = sum(result.passed for result in results)
-    status_counts = Counter(result.status.value for result in results)
-    n_reference_failures = sum(
-        result.status in {ComparisonStatus.REFERENCE_ERROR, ComparisonStatus.REFERENCE_TIMEOUT}
-        for result in results
-    )
-    n_valid = n_total - n_reference_failures
-    accuracy = n_pass / n_total if n_total and not n_reference_failures else None
-
-    summary = {
-        "run_id": selected_run_id,
-        "task": task.name,
-        "status": "invalid_reference" if n_reference_failures else "completed",
-        "n_requested_tests": test_count,
-        "n_unique_tests": len(tests),
-        "n_total": n_total,
-        "n_valid": n_valid,
-        "n_reference_failures": n_reference_failures,
-        "n_pass": n_pass,
-        "n_fail": n_valid - n_pass,
-        "accuracy": accuracy,
-        "status_counts": dict(sorted(status_counts.items())),
-    }
-    return _finalize_summary(run_dir, summary)
-
-
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Run a one-shot specification-replication baseline."
-    )
-    parser.add_argument("task_config", help="Path to a benchmark task JSON file.")
-    parser.add_argument(
-        "--tests",
-        type=int,
-        default=20,
-        help="Number of testcases to request from the LLM (default: 20).",
-    )
-    parser.add_argument(
-        "--run-root",
-        default=str(DEFAULT_RUN_ROOT),
-        help="Directory under which run folders are created.",
-    )
-    parser.add_argument("--run-id", default=None, help="Optional explicit run ID.")
-    parser.add_argument("--seed", type=int, default=42)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("task_config")
+    parser.add_argument("--tests", type=int, default=20)
+    parser.add_argument("--run-root", type=Path, default=DEFAULT_RUN_ROOT)
+    parser.add_argument("--run-id")
+    add_runtime_arguments(parser)
     args = parser.parse_args()
-
-    task = BenchmarkTask.from_json(args.task_config)
-    summary = run_baseline(
-        task,
-        test_count=args.tests,
-        run_root=args.run_root,
-        run_id=args.run_id,
-        seed=args.seed,
-    )
+    try:
+        config = config_from_args(args)
+        task = BenchmarkTask.from_json(args.task_config)
+        summary = run_baseline(task, test_count=args.tests, run_root=args.run_root,
+                               run_id=args.run_id, runtime_config=config)
+    except KeyboardInterrupt:
+        return 130
+    except Exception as exc:
+        print(f"Setup failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
     print(json.dumps(summary, ensure_ascii=True))
-    return 0 if summary["status"] == "completed" else 1
+    return 130 if summary["status"] == "interrupted" else 0 if summary["status"] == "completed" else 2
 
 
 if __name__ == "__main__":

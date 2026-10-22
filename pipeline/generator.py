@@ -24,16 +24,8 @@ CANDIDATE_SCHEMA = {
 }
 
 
-def generate_candidate(
-    *,
-    specification: str,
-    input_format: str,
-    run_dir: str | Path,
-    target: str,
-    seed: int = 42,
-    call_fn: Callable[..., str] = logged_call,
-) -> CandidateSource:
-    """Generate one Python or C++ stdin/stdout candidate."""
+def candidate_messages(*, specification: str, input_format: str) -> tuple[str, str]:
+    """Build specification-only candidate prompts."""
 
     system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
     user_prompt = (
@@ -43,6 +35,32 @@ def generate_candidate(
         + input_format
         + "\n\nGenerate the complete candidate implementation."
     )
+    return system_prompt, user_prompt
+
+
+def parse_candidate_response(raw: str) -> CandidateSource:
+    """Parse and validate a structured candidate response."""
+
+    return CandidateSource.from_dict(json.loads(raw))
+
+
+def generate_candidate(
+    *,
+    specification: str,
+    input_format: str,
+    run_dir: str | Path,
+    target: str,
+    seed: int = 42,
+    temperature: float = 0.2,
+    max_tokens: int = 4096,
+    call_fn: Callable[..., str] = logged_call,
+) -> CandidateSource:
+    """Generate one Python or C++ stdin/stdout candidate."""
+
+    system_prompt, user_prompt = candidate_messages(
+        specification=specification,
+        input_format=input_format,
+    )
 
     raw = call_fn(
         run_dir=run_dir,
@@ -51,11 +69,10 @@ def generate_candidate(
         iteration=0,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
-        temperature=0.2,
-        max_tokens=8192,
+        temperature=temperature,
+        max_tokens=max_tokens,
         seed=seed,
         json_schema=CANDIDATE_SCHEMA,
         schema_name="candidate_program",
     )
-    data = json.loads(raw)
-    return CandidateSource.from_dict(data)
+    return parse_candidate_response(raw)
