@@ -1,4 +1,4 @@
-"""Small dependency-free .env loader for local/Codespaces development."""
+"""Small dependency-free repository-root .env loader."""
 
 from __future__ import annotations
 
