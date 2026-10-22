@@ -82,12 +82,16 @@ class TaskCheckpoint:
     def load(cls, root: Path, task: str, budget: int):
         state = verify_payload(read_json(root / "state.json"), str(root / "state.json"))
         stages = {"candidate_request", "candidate_response", "tests_request", "tests_response",
+                  "abstraction_request", "abstraction_response",
                   "repair_request", "repair_response", "evaluate", "completed", "failed"}
         attempted, evaluated = state.get("attempted_iteration"), state.get("last_evaluated_iteration")
         if (state.get("task") != task or state.get("stage") not in stages
                 or type(attempted) is not int or not 0 <= attempted <= budget
                 or (evaluated is not None and (type(evaluated) is not int or not 0 <= evaluated <= attempted))):
             raise CheckpointError("Invalid task checkpoint state")
+        if state["stage"] in {"abstraction_request", "abstraction_response"} and (
+                evaluated is None or attempted != evaluated or evaluated >= budget):
+            raise CheckpointError("Abstraction must refer to an evaluated round with repair budget remaining")
         result = cls(root, state)
         result.validate()
         return result

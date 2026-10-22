@@ -7,13 +7,15 @@ replication. Given a specification, valid stdin description and hidden reference
 executable, synthesize a program with equivalent observable behaviour. Recovering
 source code or reconstructing algorithms is not the goal.
 
-The active branch is `experiments/raw-feedback`. The approved current phase is
-to finish raw repair for user validation, including local inference, reliable
-checkpoints, cleanup and documentation. `experiments/no-feedback` remains a
-separate one-shot baseline with shared runtime fixes and no raw repair code.
-The agreed next phases are abstract feedback, path/trace feedback, then comparison
-as recorded in `docs/ROADMAP.md`. Their implementation requires phase review.
-Comparison/pool work is preserved in Git history, not active source.
+The active branch is `experiments/abstract-feedback`, created from raw checkpoint
+`fc95a260ddfb2096e561dd9cb99c660b1597e5a7`. The approved current phase is abstract
+feedback: behavioural classes between evaluation and direct repair, resumable
+abstraction artifacts and documentation. `experiments/raw-feedback` remains its
+independent phase snapshot; raw empirical validation is still pending.
+`experiments/no-feedback` remains a separate one-shot baseline with shared runtime
+fixes and no repair code. Path/trace feedback and comparison require later phase
+review as recorded in `docs/ROADMAP.md`. Comparison/pool work is preserved in Git
+history, not active source.
 
 ## Research contract
 
@@ -23,21 +25,34 @@ Comparison/pool work is preserved in Git history, not active source.
   bytes, preserving line endings and invalid UTF-8 through JSON persistence.
   Stderr is diagnostic only.
 - Launch failure, timeout or nonzero exit is unsuccessful. Any reference failure
-  invalidates the task (`invalid_reference`, `accuracy: null`) and prevents repair.
+  invalidates the task (`invalid_reference`, `accuracy: null`) and prevents
+  abstraction and repair.
 - The only model-visible task fields are specification and input format. Output
   behaviour belongs in the specification. Never expose private reference commands
-  or task names in generation prompts; never inspect the reference's source.
+  or task names in model prompts; never inspect the reference's source.
 - Generate/deduplicate stdin once and reuse it in every round. Include all
   eligible failures in original input order; no feedback-case cap.
-- Repair the latest candidate directly from specification + current candidate +
-  raw input/status/reference stdout/candidate stdout. Retain its language.
+- Abstraction receives specification + input format + all current eligible raw
+  failures (case ID, input, status, reference stdout, candidate stdout), without
+  candidate source, passing cases, diagnostics or history. Case IDs are zero-based
+  positions in the fixed deduplicated stdin set.
+- Require structured behavioural classes with label, observed/expected behaviour
+  and supporting case IDs. Check structure, IDs and complete coverage; allow
+  overlap and singleton classes without a class cap. Semantic support is for user
+  inspection. Do not add causal hypotheses, repair advice or a second judge call.
+- Repair the latest candidate directly from specification + input format + current
+  candidate + validated classes only. Do not attach raw cases or resolve their
+  IDs into examples. Retain the candidate's language.
 - Require an explicit nonnegative repair budget. Zero evaluates only the initial
   candidate. Stop on success, exhausted budget, malformed replacement, language
-  change, build failure, invalid reference or complete-request context overflow.
+  change, build failure, invalid reference, unusable abstraction or complete-request
+  context overflow. Abstraction itself does not consume a replacement round.
 - No rollback, best-candidate selection, compiler-diagnostic feedback, implicit
   inference retries, rewritten specifications, rule generation or triage.
 - Keep attempted and last-evaluated rounds distinct. A failed replacement must
-  not inherit a successful final score from an earlier candidate.
+  not inherit a successful final score from an earlier candidate. Abstraction
+  failures terminate that task with null final accuracy and retain the last
+  evaluated score; other tasks continue. No raw fallback or chunking.
 
 ## Runtime and persistence
 
@@ -48,15 +63,23 @@ identifier, without a fallback model. Set offline flags before importing model
 libraries; resolve cache entries with `local_files_only=True`. Missing weights
 must fail without download; remote custom code is disabled.
 
-Shared defaults: seed 42, generation/repair temperature 0.2, stdin temperature
-0.6, output limit 4096, context limit 8192, dtype auto, tensor parallelism 1.
+Shared defaults: seed 42, generation/abstraction/repair temperature 0.2, stdin
+temperature 0.6, output limit 4096, context limit 8192, dtype auto, tensor
+parallelism 1.
 No default repair budget. README documents every other CLI option.
+Abstraction preceding repair round i uses seed S + i and the shared output limit
+and model; there are no abstraction-specific runtime options.
 
 Checkpoint schema is 2. Save requests before inference and successful responses
 before advancing state; publish artifacts/state atomically. Hash checkpoint
 artifacts and reject tampering or incompatible/older checkpoints without
 overwriting them. Resume cached successful inference before loading the model.
 Batch only requests with compatible schema and sampling settings.
+Freeze `feedback_mode: abstract` in run identity; raw checkpoints cannot resume
+on this branch. Persist abstraction requests/responses separately under inference
+step `failure_abstraction`, indexed by their evaluated source round. Save raw
+evidence and validated classes separately; abstraction stages must not advance
+`attempted_iteration`. Record abstraction tokens and latency separately from repair.
 Record prompts, schemas, model identity, runtime versions, sampling settings,
 latency, errors and available token counts. Output defaults to ignored `runs/`.
 Exit codes are 0 for normal completion including exhausted budgets, 2 for setup
@@ -82,8 +105,8 @@ Never fabricate accuracy, performance or experimental results.
 
 Prefer the standard library, small modules, dataclasses and explicit JSON.
 Remove orphan imports and obsolete comments when deleting source. Do not restore
-removed deployment/scheduler infrastructure. Abstract feedback, tracing and
-comparison/pool integration are outside this phase.
+removed deployment/scheduler infrastructure. Tracing and comparison/pool
+integration are outside this phase.
 
 For later comparison, all four arms must share a frozen initial candidate per
 task/seed, development and held-out pools and relevant model configuration.

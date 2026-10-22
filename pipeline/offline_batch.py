@@ -1,4 +1,4 @@
-"""Resumable raw-feedback repair using direct, local-only model inference."""
+"""Resumable abstract-feedback repair using direct, local-only model inference."""
 from __future__ import annotations
 
 import argparse
@@ -12,12 +12,16 @@ import sys
 import time
 import uuid
 
+from .abstraction import (
+    AbstractionParseError, AbstractionValidationError, abstraction_messages,
+    parse_abstraction_response,
+)
 from .artifacts import append_jsonl, atomic_json, digest, implementation_digest, read_json, utc_now
 from .builder import build_candidate
 from .candidate import CandidateSource
 from .checkpoints import CheckpointError, TaskCheckpoint, checked_payload, verify_payload
 from .differential import run_differential_suite
-from .feedback import RawFeedbackStrategy
+from .feedback import abstraction_feedback
 from .generator import CANDIDATE_SCHEMA, candidate_messages, parse_candidate_response
 from .llm_log import log_call, request_record, response_record
 from .offline_runtime import (
@@ -95,6 +99,7 @@ def _initialize(tasks: list[BenchmarkTask], config: BatchConfig, runtime_identit
         raise ValueError("Task names must not collide with experiment metadata, summary or attempts files")
     root = config.output_root.expanduser().resolve() / config.experiment_id
     identity = {
+        "feedback_mode": "abstract",
         "implementation_sha256": implementation_digest(), "runtime": runtime_identity,
         "output_directory": str(root), "test_count": config.test_count, "workers": config.workers,
         "max_repair_iterations": config.max_repair_iterations,
@@ -108,7 +113,8 @@ def _initialize(tasks: list[BenchmarkTask], config: BatchConfig, runtime_identit
             raise CheckpointError("Incomplete initialization: metadata is missing; use a new run")
         metadata = verify_payload(read_json(root / "metadata.json"), "experiment metadata")
         if metadata.get("identity") != identity or metadata.get("fingerprint") != digest(identity):
-            raise CheckpointError("Cannot resume: implementation, model, task, directory or configuration changed")
+            raise CheckpointError(
+                "Cannot resume: feedback mode, implementation, model, task, directory or configuration changed")
         checkpoints = [TaskCheckpoint.load(root / task.name, task.name, config.max_repair_iterations)
                        for task in tasks]
     else:
@@ -151,22 +157,30 @@ def _request_for(task: BenchmarkTask, checkpoint: TaskCheckpoint,
         return InferenceRequest(task.name, "test_generation", 0, system, user, schema,
                                 settings.test_temperature, settings.max_tokens,
                                 settings.seed + 100_000, "test_inputs")
-    if stage != "repair_request":
+    if stage not in {"abstraction_request", "repair_request"}:
         raise ValueError(f"Unsupported request stage: {stage}")
     previous = checkpoint.state["last_evaluated_iteration"]
     if previous is None or previous >= config.max_repair_iterations:
-        raise CheckpointError("Repair request is outside the configured round budget")
+        raise CheckpointError("Feedback/repair request is outside the configured round budget")
     directory = _round(previous)
+    iteration = previous + 1
+    if stage == "abstraction_request":
+        feedback = abstraction_feedback(checkpoint.read_json(directory + "/results.json"))
+        if not feedback:
+            raise CheckpointError("Abstraction requested without eligible failures")
+        checkpoint.write_json(directory + "/feedback.json", feedback)
+        system, user, schema = abstraction_messages(
+            specification=specification, input_format=task.input_format, failures=feedback,
+        )
+        return InferenceRequest(task.name, "failure_abstraction", previous, system, user, schema,
+                                settings.temperature, settings.max_tokens,
+                                settings.seed + iteration, "behavioural_classes")
     candidate = CandidateSource.from_dict(checkpoint.read_json(directory + "/candidate.json"))
-    feedback = RawFeedbackStrategy().prepare(checkpoint.read_json(directory + "/failures.json"))
-    if not feedback:
-        raise CheckpointError("Repair requested without eligible failures")
-    checkpoint.write_json(directory + "/feedback.json", feedback)
+    abstraction = checkpoint.read_json(directory + "/abstraction.json")
     system, user, schema = repair_messages(
         specification=specification, input_format=task.input_format, candidate=candidate,
-        failures=feedback,
+        abstraction=abstraction,
     )
-    iteration = previous + 1
     return InferenceRequest(task.name, "candidate_repair", iteration, system, user, schema,
                             settings.temperature, settings.max_tokens,
                             settings.seed + iteration, "candidate_program")
@@ -183,9 +197,9 @@ def _verify_response(value: object, request: dict) -> dict:
 
 
 def _advance_response(checkpoint: TaskCheckpoint, request: InferenceRequest) -> None:
-    checkpoint.state["attempted_iteration"] = request.iteration
     checkpoint.state["stage"] = {
         "initial_code_generation": "candidate_response", "test_generation": "tests_response",
+        "failure_abstraction": "abstraction_response",
         "candidate_repair": "repair_response",
     }[request.step]
     checkpoint.save()
@@ -200,7 +214,8 @@ def _execute_requests(tasks: dict[str, BenchmarkTask], checkpoints: list[TaskChe
             base = _inference_base(request)
             record = request_record(request, session.identity)
             checkpoint.write_json(base + ".request.json", record)
-            checkpoint.state["attempted_iteration"] = request.iteration
+            if request.step == "candidate_repair":
+                checkpoint.state["attempted_iteration"] = request.iteration
             checkpoint.save()  # A request is committed before calling the model.
             response_path = checkpoint.path(base + ".response.json")
             if response_path.exists():
@@ -261,11 +276,31 @@ def _consume(checkpoint: TaskCheckpoint) -> None:
     checkpoint.validate()
     stage = checkpoint.state["stage"]
     iteration = checkpoint.state["attempted_iteration"]
-    step = "test_generation" if stage == "tests_response" else (
-        "candidate_repair" if stage == "repair_response" else "initial_code_generation")
+    step = {
+        "candidate_response": "initial_code_generation", "tests_response": "test_generation",
+        "abstraction_response": "failure_abstraction", "repair_response": "candidate_repair",
+    }[stage]
     base = f"inference/iteration-{iteration:03d}-{step}"
     request = checkpoint.read_json(base + ".request.json")
     response = _verify_response(checkpoint.read_json(base + ".response.json"), request)["output"]["response"]
+    if stage == "abstraction_response":
+        directory = _round(iteration)
+        feedback = checkpoint.read_json(directory + "/feedback.json")
+        try:
+            abstraction = parse_abstraction_response(response, feedback)
+        except (AbstractionParseError, AbstractionValidationError) as exc:
+            reason = ("abstraction_parse_failed" if isinstance(exc, AbstractionParseError)
+                      else "abstraction_validation_failed")
+            checkpoint.write_json(directory + "/abstraction_error.json", {
+                "iteration": iteration, "stop_reason": reason,
+                "error": {"type": type(exc).__name__, "message": str(exc)},
+            })
+            _finish(checkpoint, reason, reason, error=str(exc))
+            return
+        checkpoint.write_json(directory + "/abstraction.json", abstraction)
+        checkpoint.state["stage"] = "repair_request"
+        checkpoint.save()
+        return
     if stage == "tests_response":
         try:
             tests = parse_tests_response(response, request["request"]["schema"]["properties"]["tests"]["minItems"])
@@ -354,7 +389,7 @@ def _evaluate(task: BenchmarkTask, checkpoint: TaskCheckpoint, config: BatchConf
     elif iteration >= config.max_repair_iterations:
         _finish(checkpoint, "completed", "repair_budget_exhausted", score=score)
     else:
-        checkpoint.state["stage"] = "repair_request"
+        checkpoint.state["stage"] = "abstraction_request"
         checkpoint.save()
 
 
@@ -393,7 +428,7 @@ def run_offline_batch(tasks: list[BenchmarkTask], *, config: BatchConfig,
             if should_stop():
                 break
             pending = [cp for cp in checkpoints if cp.state["stage"] in {
-                "candidate_request", "tests_request", "repair_request"}]
+                "candidate_request", "tests_request", "abstraction_request", "repair_request"}]
             error = _execute_requests(by_name, pending, config, session, should_stop)
             if error is not None:
                 result = _summary(root, checkpoints,
@@ -403,7 +438,7 @@ def run_offline_batch(tasks: list[BenchmarkTask], *, config: BatchConfig,
             if should_stop():
                 break
             responses = [cp for cp in checkpoints if cp.state["stage"] in {
-                "candidate_response", "tests_response", "repair_response"}]
+                "candidate_response", "tests_response", "abstraction_response", "repair_response"}]
             with ThreadPoolExecutor(max_workers=config.workers) as pool:
                 list(pool.map(_consume, responses))
             if should_stop():

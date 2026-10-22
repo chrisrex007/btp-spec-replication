@@ -29,38 +29,60 @@ Prompt tokens are counted after chat formatting and passed directly to vLLM.
 Prompt length plus reserved output must fit the configured context. Full-feedback
 overflow is terminal and preserves the request; it is never shortened.
 
-## One-shot and raw workflows
+## One-shot and abstract workflows
 
 `pipeline.baseline` generates one candidate, builds it, generates/deduplicates
 stdin, evaluates and persists results. It has no repair or resume contract.
 `experiments/no-feedback` contains only this baseline and shared infrastructure.
 
+This branch is `experiments/abstract-feedback`, based on raw checkpoint
+`fc95a260ddfb2096e561dd9cb99c660b1597e5a7`. The raw branch remains an independent
+snapshot; neither raw nor abstract empirical validation is claimed.
 `pipeline.offline_batch` owns independent task state machines:
 
 ```text
 initial request -> saved response -> parse/build candidate
                 -> stdin request -> saved response -> fixed unique stdin set
                 -> evaluate -> no failures / exhausted budget / invalid reference
-                            -> all raw failures + latest candidate
+                            -> all indexed raw failures
+                            -> abstraction request -> saved response -> validate classes
+                            -> classes + latest candidate
                             -> repair request -> saved response -> parse/build
                             -> evaluate against the same stdin set -> ...
 ```
 
 The required repair budget counts replacements, excluding initial round zero.
-All eligible failures retain input order. Raw payloads contain input, status,
-reference stdout and candidate stdout. Repair schemas restrict the language to
-the current candidate's language; parsing checks it again. Malformed responses,
-language changes and build failures stop the task. There is no rollback,
-best-candidate selection, diagnostic-based repair or implicit retry.
+All eligible failures retain input order. Their case IDs are zero-based positions
+in the fixed deduplicated stdin set, not positions within the failures array.
+Abstraction receives specification, input format and every current raw failure:
+case ID, input, status, reference stdout and candidate stdout. It receives no
+source, passing cases, diagnostics, private commands, task names or history.
+
+The response contains only a nonempty `classes` array. Each class contains
+`label`, `observed_behavior`, `expected_behavior` and `case_ids`. Parsing requires
+nonblank descriptions and nonempty integer ID arrays. Validation rejects unknown
+or repeated within-class IDs and requires complete failure coverage. Overlap and
+singleton classes are allowed; there is no class cap. The prompt prohibits causal
+hypotheses, repair advice, specification rewriting and unsupported generalization.
+Mechanical validation checks evidence references, not semantic grounding; that
+remains for user inspection, without another model judge.
+
+Repair receives specification, input format, current candidate and validated
+classes only. Evidence IDs are not resolved into examples. Repair schemas restrict
+the language to the current candidate's language; parsing checks it again.
+Malformed responses, language changes and build failures stop the task. There is
+no rollback, best-candidate selection, diagnostic-based repair or implicit retry.
+Both new abstraction stages use the same lazy model and shared sampling settings.
+Abstraction preceding replacement i uses seed S + i, without changing repair seeds.
 
 ## Persistence and resume
 
 `artifacts.py` provides lossless JSON, atomic publication and hashing;
 `checkpoints.py` enforces schema-2 state and artifact integrity. Metadata freezes
 source/prompts, runtime/model identity, ordered task snapshots, output path and
-options. State records stage, attempted iteration, last evaluated iteration and
-hashes for committed artifacts. Older schemas and changed/missing artifacts are
-rejected without migration or overwrite.
+options, including `feedback_mode: abstract`. State records stage, attempted
+iteration, last evaluated iteration and hashes for committed artifacts. Older
+schemas and changed/missing artifacts are rejected without migration or overwrite.
 
 Requests are committed before inference. Successful responses are committed
 before state advances. An interrupted request stage can adopt its saved matching
@@ -69,6 +91,24 @@ Committed builds/evaluations are reused. Uncommitted work can be repeated on
 explicit resume. No engine is initialized unless uncached inference remains.
 Requests at different stages/rounds are grouped by schema and sampling settings,
 including seed. Builds/evaluations may run across tasks in a thread pool.
+
+`abstraction_request` and `abstraction_response` belong to evaluated source round r
+and do not advance `attempted_iteration`. Only committing the following replacement
+request advances it to r + 1. Budget zero, success, reference failure and exhausted
+budget never enter abstraction. Under round r, `feedback.json` holds indexed raw
+evidence and `abstraction.json` holds validated classes. Separate inference files
+use step `failure_abstraction` and source round r. Tokens, timing, errors and model
+provenance remain attributable to abstraction separately from repair. Repeated
+batch wall times must not be summed across batch members.
+
+Malformed abstraction JSON/structure stops that task with
+`abstraction_parse_failed`; invalid references, duplicate IDs or incomplete coverage
+use `abstraction_validation_failed`. Retain the response and an
+`abstraction_error.json` artifact, return null final accuracy and preserve the last
+evaluated score. Other tasks continue. Runtime errors instead preserve pending
+requests for explicit resume; context overflow is terminal. There is no raw
+fallback, chunking or automatic retry. Raw-branch checkpoints are incompatible,
+even though both branches use schema 2.
 
 Every produced round retains source, build and available evaluation artifacts.
 Malformed replacements retain their raw responses. Failed repairs have null
@@ -84,13 +124,13 @@ immutable. Diagnostic append-only logs are not checkpoint authorities.
 
 ## Scope and validation
 
-Raw implementation is prepared for user validation; no empirical success is
+Abstract implementation is prepared for user validation; no empirical success is
 claimed. Agents inspect source/diffs only, without pipeline execution, model
 loading, downloads, compilation or program execution. User commands, artifact
 layout, stopping reasons, exit codes and later scenarios live in `README.md`.
 No automated harness checks or bundled fixtures are included.
 
-Comparison/pools, abstract feedback and candidate tracing are deferred to their
+Comparison/pools and candidate tracing are deferred to their
 reviewed phases in [the roadmap](docs/ROADMAP.md). Their removed WIP source remains
 in history. The later four-arm comparison must freeze initial candidates, share
 development/held-out pools, keep held-out results out of repair, and account for

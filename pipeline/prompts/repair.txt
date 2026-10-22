@@ -1,5 +1,6 @@
-Repair the current candidate program using the specification and raw
-differential-testing failures below.
+Repair the current candidate program using the specification and behavioural
+failure classes below. The classes describe observed and expected behaviour;
+their case IDs are evidence references only. Raw cases are not supplied.
 
 Return one complete replacement program in the same supported language as the
 current candidate. Preserve correct behaviour where possible, but fix the
