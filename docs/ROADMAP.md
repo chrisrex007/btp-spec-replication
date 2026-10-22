@@ -26,8 +26,8 @@ unchanged; record exact revisions actually validated by the user.
 ## Current raw readiness delivery
 
 - The no-feedback local-only runtime prerequisite was committed on its own
-  branch (`052630f`), with shared source selectively carried into raw. Keep the
-  baseline branch free of raw repair orchestration.
+  branch (`052630f`, hardened in `00db654`), with shared source selectively
+  carried into raw. Keep the baseline branch free of raw repair orchestration.
 - Both workflows require a local directory/already cached `BTP_MODEL`, use
   direct structured vLLM inference, set offline flags before imports and never
   download missing weights. One lazy model is reused per invocation.

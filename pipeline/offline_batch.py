@@ -79,6 +79,9 @@ def _finish(checkpoint: TaskCheckpoint, status: str, reason: str,
         summary.update(score)
     if error is not None:
         summary["error"] = error
+    round_summary = _round(checkpoint.state["attempted_iteration"]) + "/summary.json"
+    if round_summary not in checkpoint.state["artifacts"]:
+        checkpoint.write_json(round_summary, {"iteration": checkpoint.state["attempted_iteration"], **summary})
     checkpoint.write_json("summary.json", summary)
     checkpoint.state.update(stage="completed" if status == "completed" else "failed", result=summary)
     checkpoint.save()
@@ -279,13 +282,6 @@ def _consume(checkpoint: TaskCheckpoint) -> None:
         reason = "repair_parse_failed" if iteration else "candidate_parse_failed"
         _finish(checkpoint, reason, reason, error=str(exc))
         return
-    if iteration:
-        previous = checkpoint.state["last_evaluated_iteration"]
-        current = checkpoint.read_json(_round(previous) + "/candidate.json")
-        if candidate.language != current["language"]:
-            _finish(checkpoint, "language_changed", "language_changed",
-                    error="A repair must retain the current candidate's language")
-            return
     directory = _round(iteration)
     checkpoint.write_json(directory + "/candidate.json", candidate.to_dict())
     source = directory + "/candidate/" + candidate.filename
@@ -293,6 +289,13 @@ def _consume(checkpoint: TaskCheckpoint) -> None:
     checkpoint.write_json(directory + "/candidate/metadata.json", {
         "language": candidate.language, "filename": candidate.filename,
     })
+    if iteration:
+        previous = checkpoint.state["last_evaluated_iteration"]
+        current = checkpoint.read_json(_round(previous) + "/candidate.json")
+        if candidate.language != current["language"]:
+            _finish(checkpoint, "language_changed", "language_changed",
+                    error="A repair must retain the current candidate's language")
+            return
     build_path = directory + "/build.json"
     if build_path in checkpoint.state["artifacts"]:
         build = checkpoint.read_json(build_path)
@@ -393,7 +396,8 @@ def run_offline_batch(tasks: list[BenchmarkTask], *, config: BatchConfig,
                 "candidate_request", "tests_request", "repair_request"}]
             error = _execute_requests(by_name, pending, config, session, should_stop)
             if error is not None:
-                result = _summary(root, checkpoints, status="runtime_failed", error=error)
+                result = _summary(root, checkpoints,
+                                  status="interrupted" if should_stop() else "runtime_failed", error=error)
                 append_jsonl(root / "attempts.jsonl", {"finished_at": utc_now(), "status": result["status"]})
                 return result
             if should_stop():
@@ -402,6 +406,8 @@ def run_offline_batch(tasks: list[BenchmarkTask], *, config: BatchConfig,
                 "candidate_response", "tests_response", "repair_response"}]
             with ThreadPoolExecutor(max_workers=config.workers) as pool:
                 list(pool.map(_consume, responses))
+            if should_stop():
+                break
             evaluating = [cp for cp in checkpoints if cp.state["stage"] == "evaluate"]
             with ThreadPoolExecutor(max_workers=config.workers) as pool:
                 list(pool.map(lambda cp: _evaluate(by_name[cp.state["task"]], cp, config), evaluating))
@@ -412,7 +418,7 @@ def run_offline_batch(tasks: list[BenchmarkTask], *, config: BatchConfig,
         result = _summary(root, checkpoints, status="interrupted")
     except Exception as exc:
         # Do not publish potentially partially advanced in-memory state on corruption.
-        result = _summary(root, checkpoints, status="artifact_failed",
+        result = _summary(root, checkpoints, status="interrupted" if should_stop() else "artifact_failed",
                           error=f"{type(exc).__name__}: {exc}")
     else:
         result = _summary(root, checkpoints, status="interrupted" if should_stop() else None)
@@ -466,6 +472,8 @@ def main() -> int:
     except KeyboardInterrupt:
         return 130
     except Exception as exc:
+        if stopped:
+            return 130
         print(f"Setup/checkpoint failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     finally:

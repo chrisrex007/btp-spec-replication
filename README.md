@@ -101,6 +101,7 @@ python -m pipeline.offline_batch --tasks $taskPath --experiment-id $runId --max-
 
 If starting a new shell, restore those variables to the original values first.
 An existing identifier requires `--resume`; a new run needs a fresh identifier.
+Run only one invocation per experiment identifier at a time.
 For multiple tasks, pass multiple JSON paths after `--tasks`, or replace
 `--tasks $taskPath` with `--manifest path/to/manifest.json`. A manifest is a JSON
 array of task JSON paths, or `{"tasks": ["task-one.json", "task-two.json"]}`;
@@ -174,7 +175,7 @@ task with `invalid_reference` and `accuracy: null`. It cannot enter repair.
 | `repair_budget_exhausted` | Evaluation completed; allowed replacements are exhausted, including budget zero |
 | `invalid_reference` | At least one reference case failed; accuracy is unavailable |
 | `candidate_parse_failed`, `test_generation_failed` | Initial structured response was unusable |
-| `repair_parse_failed`, `language_changed` | Replacement was malformed or changed language; its raw response is retained |
+| `repair_parse_failed`, `language_changed` | Replacement was malformed or changed language; its raw response and any parsed source are retained |
 | `build_failed`, `repair_build_failed` | Candidate could not be built; source and diagnostics are retained |
 | `context_budget_exceeded` | Full prompt plus reserved output exceeds context; saved request is not shortened |
 | `request_failed` | Request preparation failed; see task summary |
