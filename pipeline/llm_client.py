@@ -6,6 +6,7 @@ import json
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from .env import load_dotenv
@@ -23,6 +24,28 @@ def get_endpoint() -> str:
 
 def get_model() -> str:
     return os.environ.get("BTP_MODEL", DEFAULT_MODEL)
+
+
+def get_log_endpoint() -> str:
+    """Keep endpoint identity without URL authentication, queries or fragments."""
+    try:
+        parts = urllib.parse.urlsplit(get_endpoint())
+    except ValueError:
+        return "<invalid endpoint>"
+    endpoint = urllib.parse.urlunsplit(
+        (parts.scheme, parts.netloc.rsplit("@", 1)[-1], parts.path, "", "")
+    )
+    api_key = os.environ.get("BTP_LLM_API_KEY")
+    return endpoint.replace(api_key, "<redacted>") if api_key else endpoint
+
+
+def redact_diagnostic(message: str) -> str:
+    """Remove configured endpoint credentials and API keys from diagnostics."""
+    endpoint = get_endpoint()
+    if endpoint:
+        message = message.replace(endpoint, get_log_endpoint())
+    api_key = os.environ.get("BTP_LLM_API_KEY")
+    return message.replace(api_key, "<redacted>") if api_key else message
 
 
 def _build_headers() -> dict[str, str]:
@@ -96,7 +119,7 @@ def call(
             return body["choices"][0]["message"]["content"]
 
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+            detail = redact_diagnostic(exc.read().decode("utf-8", errors="replace"))
             last_error = RuntimeError(
                 f"LLM API returned HTTP {exc.code}: {detail or exc.reason}"
             )

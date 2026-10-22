@@ -22,35 +22,50 @@ def logged_call(
     json_schema: dict | None = None,
     schema_name: str = "response",
 ) -> str:
-    """Call the configured LLM and persist the complete request/response."""
+    """Record a logical LLM call, including request schema and failure details."""
 
     run_path = Path(run_dir)
     run_path.mkdir(parents=True, exist_ok=True)
 
+    metadata = {
+        "run_dir": run_path,
+        "step": step,
+        "target": target,
+        "iteration": iteration,
+        "model": llm_client.get_model(),
+        "endpoint": llm_client.get_log_endpoint(),
+        "seed": seed,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
+        "json_schema": json_schema,
+        "schema_name": schema_name,
+    }
     started = time.monotonic()
-    response = llm_client.call(
-        system_prompt,
-        user_prompt,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        seed=seed,
-        json_schema=json_schema,
-        schema_name=schema_name,
-    )
-    latency_s = time.monotonic() - started
+    try:
+        response = llm_client.call(
+            system_prompt,
+            user_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            seed=seed,
+            json_schema=json_schema,
+            schema_name=schema_name,
+        )
+    except Exception as exc:
+        llm_log.log_call(
+            **metadata,
+            response=None,
+            latency_s=time.monotonic() - started,
+            error={
+                "type": type(exc).__name__,
+                "message": llm_client.redact_diagnostic(str(exc)),
+            },
+        )
+        raise
 
     llm_log.log_call(
-        run_dir=run_path,
-        step=step,
-        target=target,
-        iteration=iteration,
-        model=llm_client.get_model(),
-        seed=seed,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        response=response,
-        latency_s=latency_s,
+        **metadata, response=response, latency_s=time.monotonic() - started
     )
     return response

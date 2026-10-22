@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import sys
 import unittest
@@ -28,7 +29,7 @@ class DoubleBenchmarkTests(unittest.TestCase):
         )
 
         self.assertTrue(result.succeeded)
-        self.assertEqual(result.stdout, "-42\n")
+        self.assertEqual(result.stdout, "-42" + os.linesep)
 
 
 if __name__ == "__main__":

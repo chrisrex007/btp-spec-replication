@@ -1,10 +1,10 @@
 """One-shot baseline replication run.
 
-This module connects Phases 1-4:
+The one-shot workflow is:
 specification -> candidate generation -> build -> test generation ->
 differential execution -> persisted baseline score.
 
-No repair or feedback loop is implemented here.
+The candidate is generated once and evaluated without modification.
 """
 
 from __future__ import annotations
@@ -18,8 +18,14 @@ from typing import Callable
 
 from .builder import build_candidate
 from .candidate import CandidateSource
-from .differential import DifferentialResult, run_differential_suite, write_results
+from .differential import (
+    ComparisonStatus,
+    DifferentialResult,
+    run_differential_suite,
+    write_results,
+)
 from .generator import generate_candidate
+from .llm_client import redact_diagnostic
 from .task import BenchmarkTask
 from .test_generator import generate_tests
 
@@ -30,7 +36,7 @@ DEFAULT_RUN_ROOT = REPO_ROOT / "runs"
 
 def _write_json(path: Path, value) -> None:
     path.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(value, ensure_ascii=True, indent=2) + "\n",
         encoding="utf-8",
     )
 
@@ -83,7 +89,6 @@ def run_baseline(
         candidate = candidate_generator(
             specification=specification,
             input_format=task.input_format,
-            output_format=task.output_format,
             run_dir=run_dir,
             target=task.name,
             seed=seed,
@@ -95,7 +100,7 @@ def run_baseline(
                 "run_id": selected_run_id,
                 "task": task.name,
                 "status": "candidate_generation_failed",
-                "error": f"{type(exc).__name__}: {exc}",
+                "error": redact_diagnostic(f"{type(exc).__name__}: {exc}"),
                 "accuracy": None,
             },
         )
@@ -138,7 +143,7 @@ def run_baseline(
                 "run_id": selected_run_id,
                 "task": task.name,
                 "status": "test_generation_failed",
-                "error": f"{type(exc).__name__}: {exc}",
+                "error": redact_diagnostic(f"{type(exc).__name__}: {exc}"),
                 "accuracy": None,
             },
         )
@@ -159,17 +164,24 @@ def run_baseline(
     n_total = len(results)
     n_pass = sum(result.passed for result in results)
     status_counts = Counter(result.status.value for result in results)
-    accuracy = n_pass / n_total if n_total else None
+    n_reference_failures = sum(
+        result.status in {ComparisonStatus.REFERENCE_ERROR, ComparisonStatus.REFERENCE_TIMEOUT}
+        for result in results
+    )
+    n_valid = n_total - n_reference_failures
+    accuracy = n_pass / n_total if n_total and not n_reference_failures else None
 
     summary = {
         "run_id": selected_run_id,
         "task": task.name,
-        "status": "completed",
+        "status": "invalid_reference" if n_reference_failures else "completed",
         "n_requested_tests": test_count,
         "n_unique_tests": len(tests),
         "n_total": n_total,
+        "n_valid": n_valid,
+        "n_reference_failures": n_reference_failures,
         "n_pass": n_pass,
-        "n_fail": n_total - n_pass,
+        "n_fail": n_valid - n_pass,
         "accuracy": accuracy,
         "status_counts": dict(sorted(status_counts.items())),
     }
@@ -204,7 +216,7 @@ def main() -> int:
         run_id=args.run_id,
         seed=args.seed,
     )
-    print(json.dumps(summary, ensure_ascii=False))
+    print(json.dumps(summary, ensure_ascii=True))
     return 0 if summary["status"] == "completed" else 1
 
 

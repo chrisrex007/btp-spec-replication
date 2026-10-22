@@ -1,3 +1,4 @@
+import os
 import shutil
 import tempfile
 import unittest
@@ -37,7 +38,7 @@ class BuilderTests(unittest.TestCase):
             self.assertIsNotNone(build.run_command)
             result = run_program(build.run_command, "4\n")
             self.assertTrue(result.succeeded)
-            self.assertEqual(result.stdout, "8\n")
+            self.assertEqual(result.stdout, "8" + os.linesep)
 
     @unittest.skipUnless(shutil.which("g++"), "g++ not installed")
     def test_cpp_candidate_builds_and_runs(self):
@@ -54,7 +55,7 @@ class BuilderTests(unittest.TestCase):
             self.assertTrue(build.success, build.build_stderr)
             result = run_program(build.run_command, "7\n")
             self.assertTrue(result.succeeded)
-            self.assertEqual(result.stdout, "14\n")
+            self.assertEqual(result.stdout, "14" + os.linesep)
 
     @unittest.skipUnless(shutil.which("g++"), "g++ not installed")
     def test_cpp_compile_error_is_returned(self):

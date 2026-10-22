@@ -19,7 +19,6 @@ class TaskTests(unittest.TestCase):
                     "cwd": ".",
                 },
                 "input_format": "one integer",
-                "output_format": "one integer",
                 "timeout_seconds": 1.5,
             }
             path = root / "task.json"
@@ -33,6 +32,7 @@ class TaskTests(unittest.TestCase):
             self.assertEqual(task.reference_command, ("python3", "blackbox.py"))
             self.assertEqual(task.read_specification(), "specification")
             self.assertEqual(task.timeout_seconds, 1.5)
+            self.assertNotIn("output_format", task.to_dict())
 
     def test_rejects_unsafe_task_name(self):
         with self.assertRaises(ValueError):
@@ -42,7 +42,6 @@ class TaskTests(unittest.TestCase):
                 reference_command=("program",),
                 reference_cwd=Path("."),
                 input_format="input",
-                output_format="output",
             )
 
 

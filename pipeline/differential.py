@@ -46,7 +46,7 @@ def compare_results(
     reference: ExecutionResult,
     candidate: ExecutionResult,
 ) -> DifferentialResult:
-    """Classify one pair of executions using exact stdout equality."""
+    """Compare losslessly decoded stdout, preserving every original byte."""
 
     if reference.timed_out:
         status = ComparisonStatus.REFERENCE_TIMEOUT
@@ -130,6 +130,6 @@ def write_results(path: str | Path, results: Iterable[DifferentialResult]) -> No
 
     payload = [result.to_dict() for result in results]
     Path(path).write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(payload, ensure_ascii=True, indent=2) + "\n",
         encoding="utf-8",
     )
