@@ -4,47 +4,50 @@ Research infrastructure for synthesizing a program from a natural-language
 specification and measuring its behavioural agreement with a black-box reference
 implementation.
 
-The repository includes the Phases 0–5 one-shot baseline and a separate
+Testing is user-owned. Agents must not run the pipeline or any unit,
+integration, smoke, regression, or benchmark tests. Agents may implement
+code and test cases and inspect source and diffs. The commands in this README
+are for the user to execute; keep them current as implementation changes.
+
+The repository includes a one-shot baseline and a separate
 resumable offline batch runner with raw failure-feedback repair.
 
-GPU testing is currently paused. The source checkpoint and deferred acceptance
-checks are recorded in [the testing stop](docs/checkpoints/raw-feedback-v1.md).
-The [remaining-work roadmap](docs/ROADMAP.md) groups continued development into
-four further branches (five work branches, six including `main`). The final
-comparison is baseline vs raw vs abstract vs candidate path/trace feedback.
-The current continuation branch is `experiments/raw-feedback`; abstract and
-path/trace strategies remain planned work, with uninstrumented candidate scoring.
+The [roadmap](docs/ROADMAP.md) defines five phases: no-feedback, raw feedback,
+abstract feedback, candidate path/trace feedback, and comparison/reporting.
+This branch organization is agreed. Further implementation waits for phase
+review; completing the roadmap remains the highest priority. The current branch
+is `experiments/raw-feedback`; `experiments/no-feedback` preserves the existing
+baseline-only source checkpoint. Abstract and path/trace strategies remain
+planned work, with uninstrumented candidate scoring.
 
 ## Requirements
 
 - Python 3.10+
 - `g++` with C++20 support if the LLM chooses C++
-- vLLM 0.7.3 in the PARAM Shakti Slurm environment for offline batched runs
 
-## Existing one-task baseline
+## One-task baseline
 
-The repository includes a ready-to-run smoke-test benchmark at:
+The bundled benchmarks have been removed. Supply your own task JSON,
+specification, and black-box reference executable using the task format below.
 
-```text
-benchmarks/double/
-├── spec.md
-├── blackbox.py
-└── task.json
+The baseline uses an OpenAI-compatible client configured through repository-root
+`.env`. Preserve this format, using your own values privately:
+
+```dotenv
+BTP_MODEL=your-model-name
+BTP_LLM_ENDPOINT=http://127.0.0.1:8000/v1/chat/completions
+BTP_LLM_API_KEY=
 ```
 
-The `.env.example` contains optional settings for the existing online baseline
-client. The offline Slurm runner uses its `--model` option and does not read
-`BTP_LLM_ENDPOINT`.
+Use one `KEY=VALUE` entry per line. Blank lines, `#` comments, and matching
+single or double quotes around values are supported. The API key is optional
+for endpoints that do not require authentication. `.env.example` contains only
+placeholders; never commit or print private `.env` values.
 
-The baseline continues to use the OpenAI-compatible client. Configure a
-compatible endpoint in `.env` only when running that baseline. The PARAM Shakti
-workflow below uses the offline vLLM Python API directly and does not use an
-HTTP server or tunnel.
-
-Run the complete Phase 0–5 baseline:
+For your own testing, replace `path/to/task.json` with your task's actual path:
 
 ```bash
-python -m pipeline.baseline benchmarks/double/task.json --tests 10
+python -m pipeline.baseline path/to/task.json --tests 10
 ```
 
 This performs:
@@ -65,19 +68,6 @@ results + failures + baseline accuracy
 
 For this baseline, the client loads repository-root `.env` without overriding
 variables already set in the shell. `.env` is ignored by Git.
-
-## PARAM Shakti offline batch experiments
-
-Run [`pipeline.offline_batch`](pipeline/offline_batch.py) for batched candidate
-generation, testcase generation, differential testing, and iterative raw
-failure-feedback repair. It loads one vLLM `LLM` instance per job, batches
-requests across benchmark tasks, and checkpoints progress for resumption.
-Follow [the PARAM Shakti setup guide](hpc/paramshakti/README.md) for the Slurm
-script and configuration. The selected Qwen2.5-7B-Instruct FP16 model uses two
-V100 GPUs on one node. Inference runs directly through vLLM's Python API; no
-HTTP server or tunnel is started. Model files use scratch; experiment artifacts
-default to persistent home storage. All cluster interaction remains
-user-mediated.
 
 ## Task configuration
 
@@ -100,13 +90,6 @@ Paths are resolved relative to the task JSON file. The reference command is run
 with the configured `cwd`. The synthesis/test-generation LLMs receive the
 natural-language specification and input-format description; they do not receive
 the hidden reference command.
-
-## Real-software pilot benchmarks
-
-The `experiments/real-software-v1` branch contains ten hidden-oracle command-line
-benchmarks under `benchmarks/01_...` through `benchmarks/10_...`. See
-`benchmarks/README.md` for ordering and the pilot-selection policy.
-
 
 ## Run artifacts
 
@@ -144,10 +127,17 @@ on the host and stronger filesystem/process isolation is future work.
 
 ## Tests
 
-The unit tests do not require an LLM endpoint:
+Run the following commands yourself from the repository root. Agents must not
+execute them, including tests that use fake inference runtimes. An implementation
+is not empirically validated until you run the relevant checks and report the
+results.
+
+The unit tests require Python 3.10+ and do not require an LLM endpoint:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-C++ build tests are skipped automatically when `g++` is unavailable.
+Some legacy benchmark tests still depend on the removed bundled fixtures. Their
+cleanup is pending review; the full suite is not currently expected to pass
+without addressing those dependencies.

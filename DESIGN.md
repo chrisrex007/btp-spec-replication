@@ -4,9 +4,10 @@
 
 Given a natural-language specification and a black-box reference executable,
 synthesize a replacement program whose observable stdin/stdout behaviour matches
-the reference implementation. The offline runner now implements raw-feedback
-repair; real GPU validation is deferred at the
-[recorded testing stop](docs/checkpoints/raw-feedback-v1.md).
+the reference implementation. The offline runner implements raw-feedback
+repair. Implementation status and empirical validation are separate; agents
+must not run the pipeline or tests. The user performs all testing using commands
+maintained in `README.md`.
 
 ## v1 execution contract
 
@@ -28,7 +29,7 @@ repair; real GPU validation is deferred at the
 
 ## Implemented baseline workflow
 
-Phases 0–5 implement the no-feedback baseline:
+The implemented no-feedback baseline performs these steps:
 
 1. Load a natural-language specification and input-format description.
 2. Ask the configured LLM for one structured Python or C++ candidate.
@@ -44,7 +45,7 @@ No black-box failures are shown back to the LLM in this baseline.
 The offline batch runner repairs the current candidate using raw differential
 failures and reuses its development tests across iterations. It checkpoints
 inference responses and experiment stages, and uses one in-process vLLM model.
-This implemented path is awaiting actual GPU validation.
+Its presence does not establish empirical validation.
 
 The final research comparison has four arms:
 
@@ -65,12 +66,18 @@ and input identities. Traces are stored separately from stdout, with explicit
 errors and truncation. The reference is never traced or instrumented. Scoring
 always uses the normal uninstrumented candidate; tracing only supplies feedback.
 
-Reusable repair orchestration, frozen development/held-out pools, abstract and
-path/trace strategies, four-arm integration, and final reporting remain to
-implement. The [roadmap](docs/ROADMAP.md) groups this into four continuation
-branches plus the preserved checkpoint: five work branches, six with `main`.
-Each milestone has separate local and deferred GPU acceptance. Material research
-choices, including tracing mechanisms, remain subject to phase review.
+The [roadmap](docs/ROADMAP.md) defines the agreed five-phase branch order:
+no-feedback, raw feedback, abstract feedback, candidate path/trace feedback, and
+comparison/reporting. Raw-feedback strategy extraction is already present;
+unfinished comparison and pool work is preserved as a WIP checkpoint. Abstract
+and path/trace strategies, complete four-arm integration, and final reporting
+remain planned work.
+
+Completing the roadmap is the highest-priority implementation goal. The user has
+asked to wait for phase review before further implementation. Material research
+choices, including tracing mechanisms and the placement of shared comparison
+infrastructure, remain subject to that review. Deployment and testing environment
+details are deferred; preserve the `.env` format documented in `README.md`.
 
 ## Explicitly out of scope for v1
 
