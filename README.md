@@ -5,8 +5,8 @@ specification, generates stdin tests, compares the candidate with a black-box
 reference, and saves the results. The generated candidate stays unchanged
 throughout evaluation.
 
-Testing belongs to the user. Agents must not run this pipeline or any tests,
-including tests with mocked inference. The commands below are for you to run.
+Validation belongs to the user. Agents must not run the pipeline or execute
+candidate/reference programs. The commands below are for you to run.
 
 ## Requirements and configuration
 
@@ -53,20 +53,6 @@ output behaviour must be in the specification. The reference command is private
 to the harness and is never included in generation prompts.
 
 ## Commands for user-run validation
-
-Run these commands yourself from the repository root. They have not been run by
-the agent. The tests mock inference and do not require an LLM endpoint, but some
-launch local programs. C++ tests are skipped when `g++` is unavailable.
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-To inspect just the inference-record regressions without making model calls:
-
-```bash
-python -m unittest discover -s tests -p "test_llm_logging.py" -v
-```
 
 The bundled `benchmarks/double/` fixture is a plumbing smoke test. After privately
 configuring your endpoint, run:

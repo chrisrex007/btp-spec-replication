@@ -49,7 +49,7 @@ interfaces, stateful sessions, tracing, non-deterministic targets, specialized
 test generation, additional languages, and deployment infrastructure are outside
 this phase. Model API access is separate from the target program interface.
 
-All testing is performed by the user using commands in `README.md`. Agents may
-inspect code and author regression tests but must not run the pipeline or tests.
+All validation is performed by the user using pipeline commands in `README.md`.
+Agents may inspect code but must not run the pipeline or its target programs.
 Implementation changes do not constitute empirical validation. Review material
 research choices before changing the experiment's contract.

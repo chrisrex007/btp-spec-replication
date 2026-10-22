@@ -75,14 +75,14 @@ Work one reviewed phase at a time. Before extending scope, explain the phase and
 get user approval. Ask before choices that materially affect experimental validity
 or when Markdown instructions conflict. Do not re-ask decisions settled here.
 
-The user performs all testing. Agents must not execute the pipeline, unit tests,
-integration tests, smoke tests, benchmarks, fake-runtime tests, or generated and
-reference programs. Agents may inspect source and diffs and add or update test
-code. Maintain exact user-run commands in repository-root `README.md`.
+Validation is user-managed. Do not add automated harness checks unless the user
+explicitly asks. Agents must not execute the pipeline, benchmarks, or generated
+and reference programs. Agents may inspect source and diffs. Maintain exact
+user-run pipeline commands in repository-root `README.md`.
 
-Report implementation and validation separately. State that tests were not run
-by the agent; use actual user-provided outcomes for validation claims. Never
-fabricate results or carry historical test counts forward as current evidence.
+Report implementation and validation separately. State that the pipeline was not
+executed by the agent; use actual user-provided outcomes for validation claims.
+Never fabricate results or carry historical scores forward as current evidence.
 
 Prefer standard-library Python, small modules, dataclasses, explicit JSON, and
 deterministic interfaces. Avoid unnecessary frameworks and speculative features.
