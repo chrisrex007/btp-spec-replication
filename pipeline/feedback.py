@@ -1,14 +1,10 @@
-"""Feedback strategies shared by direct candidate repair runners."""
+"""Complete raw failures for direct candidate repair."""
 
 CANDIDATE_FAILURES = {"output_mismatch", "candidate_timeout", "candidate_error"}
 
 
 class RawFeedbackStrategy:
-    kind = "raw"
-
-    def prepare(self, failures: list[dict], limit: int) -> list[dict]:
-        if type(limit) is not int or limit <= 0:
-            raise ValueError("feedback limit must be a positive integer")
+    def prepare(self, failures: list[dict]) -> list[dict]:
         feedback = []
         for item in failures:
             if item.get("status") not in CANDIDATE_FAILURES:
@@ -21,6 +17,4 @@ class RawFeedbackStrategy:
                 "reference_stdout": reference["stdout"],
                 "candidate_stdout": item["candidate"]["stdout"],
             })
-            if len(feedback) == limit:
-                break
         return feedback
