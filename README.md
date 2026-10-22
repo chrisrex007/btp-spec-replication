@@ -16,14 +16,9 @@ with stdin/stdout programs. It does **not** implement feedback-driven repair yet
 
 ## Fastest first run: OpenRouter + Codespaces
 
-The repository includes a ready-to-run smoke-test benchmark at:
-
-```text
-benchmarks/double/
-├── spec.md
-├── blackbox.py
-└── task.json
-```
+Supply your own task JSON, specification, and black-box reference executable
+using the task format below. Validation is user-managed; agents must not execute
+the pipeline or its target programs.
 
 Copy the example environment file:
 
@@ -45,10 +40,10 @@ The pipeline loads the repository-root `.env` automatically and never
 overrides variables that are already present in the shell/Codespaces
 environment. `.env` is ignored by Git.
 
-Run the complete Phase 0–5 baseline:
+For your own validation, replace `path/to/task.json` with your actual task path:
 
 ```bash
-python -m pipeline.baseline benchmarks/double/task.json --tests 10
+python -m pipeline.baseline path/to/task.json --tests 10
 ```
 
 This performs:
@@ -137,12 +132,3 @@ and Codespaces secrets are not exposed through environment variables during
 candidate execution. This is **not** a full sandbox: generated code still runs
 on the host and stronger filesystem/process isolation is future work.
 
-## Tests
-
-The unit tests do not require an LLM endpoint:
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-C++ build tests are skipped automatically when `g++` is unavailable.
