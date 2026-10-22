@@ -12,10 +12,11 @@ review before further implementation. This does not authorize implementing all
 phases now. Existing code is not evidence of completed phase review or empirical
 validation.
 
-The user performs all testing. Agents must not run the pipeline or any tests,
-including local tests. Keep user-run commands in the repository-root `README.md`.
-Testing infrastructure and deployment details are deferred. Report implementation
-completion and empirical validation separately; unexecuted checks remain pending.
+Validation is user-managed. Agents must not execute the pipeline or its target
+programs. Keep user-run pipeline commands in repository-root `README.md`.
+Do not add automated harness checks unless the user explicitly asks. Deployment
+details are deferred. Report implementation completion and empirical validation
+separately; unexecuted checks remain pending.
 
 ## Branch budget and order
 

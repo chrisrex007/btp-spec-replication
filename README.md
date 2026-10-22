@@ -4,10 +4,9 @@ Research infrastructure for synthesizing a program from a natural-language
 specification and measuring its behavioural agreement with a black-box reference
 implementation.
 
-Testing is user-owned. Agents must not run the pipeline or any unit,
-integration, smoke, regression, or benchmark tests. Agents may implement
-code and test cases and inspect source and diffs. The commands in this README
-are for the user to execute; keep them current as implementation changes.
+Validation is user-managed. Agents may implement code and inspect source and
+diffs, but must not execute the pipeline or candidate/reference programs. The
+pipeline commands in this README are for the user to run.
 
 The repository includes a one-shot baseline and a separate
 resumable offline batch runner with raw failure-feedback repair.
@@ -125,19 +124,3 @@ and Codespaces secrets are not exposed through environment variables during
 candidate execution. This is **not** a full sandbox: generated code still runs
 on the host and stronger filesystem/process isolation is future work.
 
-## Tests
-
-Run the following commands yourself from the repository root. Agents must not
-execute them, including tests that use fake inference runtimes. An implementation
-is not empirically validated until you run the relevant checks and report the
-results.
-
-The unit tests require Python 3.10+ and do not require an LLM endpoint:
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-Some legacy benchmark tests still depend on the removed bundled fixtures. Their
-cleanup is pending review; the full suite is not currently expected to pass
-without addressing those dependencies.

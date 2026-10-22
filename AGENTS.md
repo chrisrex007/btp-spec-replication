@@ -232,7 +232,7 @@ For a new phase:
 1. explain the phase,
 2. get feedback/approval,
 3. implement only the approved scope,
-4. add/update test code and README commands without executing tests,
+4. update user-run pipeline commands and artifact documentation,
 5. report exactly what changed.
 
 ### Implementation priority and documentation conflicts
@@ -246,19 +246,15 @@ research methodology, or what to do or avoid, identify the conflict and ask the
 user before implementing the affected work. Continue independent, already
 authorized work while awaiting clarification.
 
-### Testing belongs to the user
+### User-managed validation
 
-The user will perform all testing. Agents must not execute the pipeline or run
-unit, integration, smoke, regression, or benchmark tests themselves. This
-also applies to fake-runtime tests and generated candidate/reference programs.
+Do not add automated harness checks unless the user explicitly asks. Agents must
+not execute the pipeline, benchmarks, or generated and reference programs.
+Agents may inspect source and diffs. Keep exact user-run pipeline commands,
+prerequisites, and expected artifacts in repository-root `README.md`.
 
-Agents may inspect source and diffs and add or update test code. Keep the exact
-commands, prerequisites, and expected artifacts for user-run testing in the
-repository-root `README.md`, updating them with implementation changes. Do not
-replace runnable commands with an instruction to ask an agent to run tests.
-
-Report implementation and validation separately. State that tests were not run
-by the agent; claim validation only from results the user actually provides.
+Report implementation and validation separately. State that the pipeline was not
+executed by the agent; claim validation only from user-provided results.
 
 ### Ask on material research choices
 

@@ -6,7 +6,7 @@ Given a natural-language specification and a black-box reference executable,
 synthesize a replacement program whose observable stdin/stdout behaviour matches
 the reference implementation. The offline runner implements raw-feedback
 repair. Implementation status and empirical validation are separate; agents
-must not run the pipeline or tests. The user performs all testing using commands
+must not execute the pipeline or its target programs. The user validates using commands
 maintained in `README.md`.
 
 ## v1 execution contract
