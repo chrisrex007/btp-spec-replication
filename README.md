@@ -1,90 +1,37 @@
-# BTP Spec Replication
+# BTP Spec Replication — no-feedback baseline
 
-Research infrastructure for synthesizing a program from a natural-language
-specification and measuring its behavioural agreement with a black-box reference
-implementation.
+This branch synthesizes one Python or C++20 program from a natural-language
+specification, generates stdin tests, compares the candidate with a black-box
+reference, and saves the results. The generated candidate stays unchanged
+throughout evaluation.
 
-The current repository implements **Phases 0–5**: a complete one-shot baseline
-with stdin/stdout programs. It does **not** implement feedback-driven repair yet.
+Testing belongs to the user. Agents must not run this pipeline or any tests,
+including tests with mocked inference. The commands below are for you to run.
 
-## Requirements
+## Requirements and configuration
 
-- Python 3.10+
-- `g++` with C++20 support if the LLM chooses C++
-- An OpenAI-compatible `/v1/chat/completions` endpoint with structured-output
-  support
+- Python 3.10+.
+- An OpenAI-compatible chat-completions endpoint with structured-output support.
+- `g++` with C++20 support when a generated candidate uses C++.
 
-## Fastest first run: OpenRouter + Codespaces
+Create or edit repository-root `.env` privately, using `.env.example` as a format
+reference. Preserve existing settings if you already have a `.env` file.
 
-The repository includes a ready-to-run smoke-test benchmark at:
-
-```text
-benchmarks/double/
-├── spec.md
-├── blackbox.py
-└── task.json
+```dotenv
+BTP_MODEL=your-model-name
+BTP_LLM_ENDPOINT=http://127.0.0.1:8000/v1/chat/completions
+BTP_LLM_API_KEY=
 ```
 
-Copy the example environment file:
-
-```bash
-cp .env.example .env
-```
-
-Then edit `.env` and set your own OpenRouter key:
-
-```env
-BTP_LLM_ENDPOINT=https://openrouter.ai/api/v1/chat/completions
-BTP_LLM_API_KEY=your-key-here
-BTP_MODEL=openrouter/free
-BTP_HTTP_REFERER=https://github.com/chrisrex007/btp-spec-replication
-BTP_X_TITLE=BTP Spec Replication
-```
-
-The pipeline loads the repository-root `.env` automatically and never
-overrides variables that are already present in the shell/Codespaces
-environment. `.env` is ignored by Git.
-
-Run the complete Phase 0–5 baseline:
-
-```bash
-python -m pipeline.baseline benchmarks/double/task.json --tests 10
-```
-
-This performs:
-
-```text
-specification
-    ↓
-LLM candidate generation
-    ↓
-candidate build
-    ↓
-LLM stdin testcase generation
-    ↓
-black-box vs candidate differential execution
-    ↓
-results + failures + baseline accuracy
-```
-
-For OpenRouter, the client adds the Bearer token automatically. The
-`HTTP-Referer` and `X-Title` headers are optional. Structured requests also
-ask OpenRouter to route only through providers that honor the required request
-parameters.
-
-## Local vLLM
-
-The same code still works without an API key:
-
-```bash
-export BTP_LLM_ENDPOINT=http://127.0.0.1:8174/v1/chat/completions
-export BTP_MODEL=qwen2.5-32b
-unset BTP_LLM_API_KEY
-```
+Use one `KEY=VALUE` entry per line. Blank lines, `#` comments, and matching quotes
+around values are supported. Existing shell environment values take precedence.
+The API key is optional for endpoints without authentication. Optional
+`BTP_HTTP_REFERER` and `BTP_X_TITLE` configure attribution headers. Never commit or
+print your private `.env` values.
 
 ## Task configuration
 
-A benchmark task is described by JSON:
+Create a task JSON next to its specification and reference program:
 
 ```json
 {
@@ -95,17 +42,63 @@ A benchmark task is described by JSON:
     "cwd": "."
   },
   "input_format": "One integer x followed by a newline.",
-  "output_format": "Print one integer followed by a newline.",
   "timeout_seconds": 2.0
 }
 ```
 
-Paths are resolved relative to the task JSON file. The reference command is run
-with the configured `cwd`.
+Paths are resolved relative to the task JSON. Use a reference command available
+on your machine; for example, replace `python3` if your interpreter has a different
+name. The LLM receives the specification and input description. All required
+output behaviour must be in the specification. The reference command is private
+to the harness and is never included in generation prompts.
+
+## Commands for user-run validation
+
+Run these commands yourself from the repository root. They have not been run by
+the agent. The tests mock inference and do not require an LLM endpoint, but some
+launch local programs. C++ tests are skipped when `g++` is unavailable.
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+To inspect just the inference-record regressions without making model calls:
+
+```bash
+python -m unittest discover -s tests -p "test_llm_logging.py" -v
+```
+
+The bundled `benchmarks/double/` fixture is a plumbing smoke test. After privately
+configuring your endpoint, run:
+
+```bash
+python -m pipeline.baseline benchmarks/double/task.json --tests 10 --seed 42
+```
+
+For another task, replace `benchmarks/double/task.json` with its JSON path. The
+pipeline command makes model calls and executes the reference and candidate.
+Smoke-test accuracy does not establish performance on difficult tasks.
+
+## Comparison and scoring
+
+Each complete stdin string is encoded as UTF-8 and supplied unchanged to both
+programs. Successful outputs must match exactly, including line endings and
+invalid UTF-8 bytes. Stderr is diagnostic only. Launch failures, timeouts, and
+non-zero exits are unsuccessful executions.
+
+If any reference execution is unsuccessful, the run has
+`status: invalid_reference`, `accuracy: null`, and a non-zero CLI exit status.
+All results remain available for diagnosis. No partial accuracy is reported.
+
+With all references successful, accuracy is `n_pass / n_total`. Candidate errors
+and timeouts count as failures. `n_reference_failures` counts unsuccessful
+reference executions, `n_valid` counts successful reference executions, and
+`n_fail` counts failures among those valid cases. A `completed` run means evaluation
+finished with valid references; it does not imply all candidates passed.
 
 ## Run artifacts
 
-Each run is written under `runs/<run-id>/`:
+Each run is saved under ignored `runs/<run-id>/`:
 
 ```text
 specification.txt
@@ -113,7 +106,7 @@ task.json
 candidate/
   metadata.json
   main.py or main.cpp
-  program              # for compiled C++ candidates
+  program or program.exe  # compiled C++ candidates only
 build.json
 tests.json
 results.json
@@ -122,27 +115,24 @@ summary.json
 llm_log.jsonl
 ```
 
-The baseline score in `summary.json` is:
+An early failure can leave only the artifacts produced before that failure.
+`summary.json` records candidate-generation, build, test-generation, or reference
+failure status. `tests.json` contains the deduplicated inputs actually evaluated;
+their count can be smaller than the requested count.
 
-```text
-passing differential tests / total differential tests
-```
+Process output is captured as bytes and decoded losslessly with UTF-8
+`surrogateescape`. JSON escapes preserve both Unicode and undecodable bytes.
+After loading a result with Python's `json` module, recover the original stdout
+with `stored_stdout.encode("utf-8", "surrogateescape")`.
 
-No failing examples are fed back to the LLM in the current baseline.
+`llm_log.jsonl` records each logical inference call, including failed calls. It
+stores prompts, model, sanitized endpoint, seed, temperature, token limit,
+response schema/name, response or error, and total latency. Endpoint credentials,
+query parameters, and fragments are omitted; authentication headers are not
+logged. Client retries remain inside the logical call and its total latency.
 
-## Security note
+## Execution boundary
 
-Generated candidates do not inherit the parent process environment, so API keys
-and Codespaces secrets are not exposed through environment variables during
-candidate execution. This is **not** a full sandbox: generated code still runs
-on the host and stronger filesystem/process isolation is future work.
-
-## Tests
-
-The unit tests do not require an LLM endpoint:
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-C++ build tests are skipped automatically when `g++` is unavailable.
+Generated candidates receive a sanitized environment instead of parent secrets.
+This is not a full sandbox: code still runs on the host. Use your own task
+references and report actual validation results separately from implementation.
