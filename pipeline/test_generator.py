@@ -67,15 +67,20 @@ def generate_tests(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=0.6,
-        max_tokens=12000,
+        max_tokens=24000,
         seed=seed,
         json_schema=schema,
         schema_name="test_inputs",
     )
     data = json.loads(raw)
     tests = data["tests"]
+    if not isinstance(tests, list) or len(tests) != count:
+        raise ValueError("LLM test response must contain the requested number of tests")
     if not all(isinstance(item, str) for item in tests):
         raise ValueError("LLM test response contains a non-string testcase")
+
+    for item in tests:
+        item.encode("utf-8")
 
     unique = _deduplicate_preserving_order(tests)
     if not unique:
