@@ -81,6 +81,11 @@ behavioural outcomes and runtime compatibility remain empirically pending.
 
 ## Current path-feedback delivery
 
+Review hardening preserves Python virtual-environment invocation and candidate
+future flags, handles unnamed real-time signals, isolates ordinary subprocesses
+from terminal interrupts, cleans up ordinary process groups, and persists collector
+setup failures per task. User validation of these changes remains pending.
+
 - Branch from exact abstract checkpoint
   `672b0999ee8792f54e0c03c5a87b6deee913cdb5` after reviewed design. Preserve all prior
   branches; pending raw/abstract empirical validation does not block this phase.

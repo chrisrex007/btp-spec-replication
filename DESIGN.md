@@ -16,6 +16,13 @@ invalid_reference and null accuracy, without tracing or repair.
 Generated programs and collectors receive sanitized environments. This provides
 process execution and cleanup, not full security or filesystem isolation.
 
+Ordinary GNU/Linux executions start in separate sessions, isolating references
+and candidates from the runner's terminal interrupts. Their process groups are
+terminated after completion or timeout, including surviving ordinary descendants.
+Deliberately detached sessions require future OS isolation. Batch evaluation
+observes cooperative stop requests between cases; an unfinished suite is not
+published and may repeat on explicit resume.
+
 ## Direct inference and path workflow
 
 This branch is experiments/path-feedback, based on abstract checkpoint
@@ -67,6 +74,12 @@ atexit handlers. Filter events to the exact candidate file. GNU g++ compiles a
 separate C++20 binary using -O0 -g -fno-inline -fno-pie -no-pie. Python-enabled GDB
 reads source line tables and installs unique-address breakpoints before run,
 including static initialization, omitting header/library source mappings.
+
+Python tracing invokes sys.executable without resolving its symlink, preserving
+virtual-environment selection. Identity records both that invocation path and the
+resolved binary. Compilation uses dont_inherit=True so only candidate future
+directives apply. Python signal terminations retain a numeric signal_number and
+use SIG<number> when no named enum member exists.
 
 Normalize each case to ordered one-based source lines, retaining repetitions,
 collection status, completeness, truncation reason, retained/total event counts
@@ -128,6 +141,10 @@ accuracy and separate prior score. Runtime inference errors remain pending for
 explicit resume; full-request overflow is terminal. Trace failure is terminal;
 resume never silently recollects a published failure. Ctrl+C cooperates at active
 operation/case boundaries, returning 130 with completed artifacts retained.
+
+OSError during trace production, including temporary workspace setup or cleanup,
+is published as a failed build/case envelope before the task terminates. Envelope
+publication and checkpoint-integrity failures still propagate as artifact errors.
 
 Hashes detect changed/missing artifacts, not an actor rewriting all hashes.
 Append-only audit logs and root summaries are diagnostic, not checkpoint authority.

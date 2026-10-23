@@ -38,6 +38,9 @@ require later review under `docs/ROADMAP.md`; their old source remains in histor
   function/branch events, values or library locations. Python uses sys.settrace;
   C++ uses a separate GNU g++ debug build and Python-enabled GDB on GNU/Linux.
   Normalized format does not imply identical event granularity across languages.
+- Preserve the Python interpreter invocation path, including virtual-environment
+  symlinks, and compile without inheriting wrapper future flags. Retain numeric
+  signal identities even when Python has no named signal enum member.
 - Support one process/thread. Detect standard Python thread/process APIs and GDB
   thread/fork/exec events; detected unsupported execution stops that task. Native
   code detection is limited; this is not full OS isolation.
@@ -111,3 +114,11 @@ KEY=VALUE format and shell precedence. Edit only .env.example and documentation
 for configuration. Do not commit .env, secrets, weights, ordinary runs, bytecode
 or temporary builds. Keep commits focused. Do not merge or push automatically;
 never push to main without an explicit request.
+
+On GNU/Linux, ordinary executions use separate sessions and clean up their process
+groups on completion or timeout. Terminal interruption stops batch evaluation at
+case boundaries without converting it into a reference/candidate failure; an
+unfinished evaluation suite remains uncommitted and may repeat on explicit resume.
+Collector workspace/setup failures are persisted per task; checkpoint validation
+and artifact-publication failures remain distinct. Detached process sessions are
+outside the cleanup guarantee and require later OS isolation.

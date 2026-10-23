@@ -218,11 +218,22 @@ candidate exits can still yield valid traces. Termination describes the traced
 program, separately from collector exit_code; collection limits are not ordinary
 candidate outcomes.
 
+Python tracing keeps the same interpreter invocation path as ordinary execution,
+including virtual-environment symlinks, and does not inherit the wrapper's future
+compiler flags. Identity records the invocation path and resolved binary separately.
+Python signal termination records include signal_number; unnamed signals use
+SIG<number> in the signal field, including intermediate Linux real-time signals.
+
 Each stdout/stderr diagnostic channel retains at most 65536 bytes and marks excess
 as truncated while continuing to drain it. GDB output may mix debugger and candidate
 text. Diagnostics never enter repair. Cleanup handles the collector process group
 and separately tracked inferiors/descendants, binding PID cleanup to process start
 identity. Collection limits are independent of the ordinary scoring timeout.
+
+Ordinary GNU/Linux executions also start in separate sessions and terminate their
+process groups after completion or timeout. Ctrl+C targets the runner rather than
+injecting a failure into the reference/candidate. Deliberately detached sessions
+are outside this cleanup guarantee; full OS isolation remains deferred.
 
 Missing tools, trace-build failure, collector launch/protocol failure, bad mappings,
 unsupported concurrency or empty traces terminate only that task. An empty prefix
@@ -291,6 +302,11 @@ Budget zero, success, invalid reference and exhausted budget produce no tracing.
 Ctrl+C cooperates at operation/case boundaries; it does not promise immediate
 cancellation of an active model call or build. Completed cases remain reusable.
 
+During ordinary evaluation, the active reference/candidate pair finishes (or times
+out), then a stop leaves the unfinished suite uncommitted. Explicit resume may
+repeat that suite; committed evaluations remain reusable. An interruption does not
+become invalid_reference or a candidate error merely because Ctrl+C was pressed.
+
 Resume requires identical feedback mode, source/prompts, tasks, output location,
 model/runtime, options and trace tool identities. Available Python/compiler/GDB
 paths, binary hashes and version information are frozen; C++ tools are inspected
@@ -337,6 +353,12 @@ evaluation. Other tasks continue. Terminal failures are not retried by resume.
 Root status is completed only when all tasks complete normally; task failures
 produce completed_with_failures. Exit codes are 0 for normal completion including
 budget exhaustion, 2 for setup/task/runtime/checkpoint failure, 130 for interruption.
+
+Temporary workspace/configuration failures produce failed trace build/case
+envelopes and stop only the affected task, provided the artifact filesystem remains
+writable. Failures to publish artifacts or verify checkpoint integrity still stop
+the invocation as artifact_failed. Saved terminal collection failures are reused
+on resume, without retrying collection.
 
 For missing weights, supply a complete local/cached model; no downloads/fallback.
 For runtime incompatibility, install mutually compatible versions exposing the
@@ -389,6 +411,21 @@ claimed until you execute and inspect your runs.
 12. Account for tracing build/case durations separately from repair token/latency
     records. Cached artifacts retain original measurements; count batch wall times
     once. Verify trace outcomes never overwrite ordinary results or accuracy.
+13. In a symlink-based Python virtual environment, inspect ordinary and traced
+    interpreter invocation paths and sys.prefix behavior. Exercise annotation
+    expressions with and without explicit future imports (especially Python
+    3.10–3.13); wrapper future flags must not change their behavior. Exercise
+    SIGRTMIN + 1 termination: retain its numeric identity without aborting the batch.
+14. Interrupt during an ordinary reference and candidate execution separately.
+    Confirm exit 130, no interruption-induced invalid_reference/candidate failure,
+    and resume of the uncommitted suite. For your process-creation scenarios,
+    confirm ordinary descendants in the execution process group do not survive
+    timeout or parent completion, including when tracing is disabled by budget zero.
+15. With the run-artifact filesystem still writable, exercise a temporary-workspace
+    creation/configuration failure. Inspect the saved failed trace envelope, null
+    final accuracy and retained prior score; unrelated tasks must continue. Resume
+    must reuse the failure. Artifact-publication/integrity failures must remain
+    artifact_failed rather than being misclassified as task-local setup failures.
 
 [AGENTS.md](AGENTS.md), [DESIGN.md](DESIGN.md) and [the roadmap](docs/ROADMAP.md)
 define the phase. Comparison/pools, process-tree tracing, full OS isolation and
