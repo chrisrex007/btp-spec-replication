@@ -67,7 +67,8 @@ def describe_tracing(config: TraceConfig) -> dict:
     config.validate()
     return {"protocol_version": PROTOCOL_VERSION, "settings": asdict(config),
             "system": platform.system(), "machine": platform.machine(),
-            "python": {"path": str(Path(sys.executable).resolve()), "version": sys.version,
+            "python": {"path": sys.executable,
+                       "resolved_binary": str(Path(sys.executable).resolve()), "version": sys.version,
                        "sha256": file_digest(Path(sys.executable))},
             "compiler": _tool_identity(os.environ.get("CXX", "g++")),
             "gdb": _tool_identity(config.gdb, debugger=True)}
@@ -93,7 +94,24 @@ def _publish(checkpoint: TaskCheckpoint, relative: str, identity: dict,
         checkpoint.track(relative)
         checkpoint.save()
         return payload["result"]
-    result = produce()
+    started = time.monotonic()
+    try:
+        result = produce()
+    except OSError as exc:
+        # Collection workspace/setup/cleanup errors belong to this task. Keep
+        # publication and checkpoint validation outside this handler: failures
+        # to persist or verify the envelope must still propagate.
+        result = {
+            "success": False, "collection_status": "failed", "lines": [],
+            "complete": False, "truncation_reason": None, "event_count": 0,
+            "total_event_count": None,
+            "termination": {"kind": "collection_stopped", "reason": "collector_failed"},
+            "error": {"reason": "collector_failed", "message": f"{type(exc).__name__}: {exc}"[:1000]},
+            "duration_s": time.monotonic() - started, "command": None,
+            "exit_code": None,
+            "diagnostics": {name: {"text": "", "truncated": False}
+                            for name in ("stdout", "stderr")},
+        }
     checkpoint.validate()
     hashes = {}
     for name in attachments:
@@ -155,8 +173,12 @@ def collect_traces(checkpoint: TaskCheckpoint, config: TraceConfig, identity: di
 
     def build():
         started = time.monotonic()
-        atomic_bytes(source, candidate.source.encode("utf-8"))
-        if file_digest(source) != request["source_sha256"]:
+        try:
+            atomic_bytes(source, candidate.source.encode("utf-8"))
+            source_digest = file_digest(source)
+        except OSError as exc:
+            raise CheckpointError(f"Cannot publish trace source: {exc}") from exc
+        if source_digest != request["source_sha256"]:
             raise CheckpointError("Trace source differs from evaluated source")
         if candidate.language == "python":
             return {"success": True, "duration_s": time.monotonic() - started, "command": None}
@@ -178,8 +200,12 @@ def collect_traces(checkpoint: TaskCheckpoint, config: TraceConfig, identity: di
             result = run_capture(command, cwd=source.parent, timeout=config.build_timeout_seconds)
             if result["error"] is None and result["exit_code"] == 0 and result["truncation_reason"] is None:
                 if temporary_executable.is_file():
-                    atomic_bytes(executable, temporary_executable.read_bytes())
-                    executable.chmod(0o700)
+                    binary = temporary_executable.read_bytes()
+                    try:
+                        atomic_bytes(executable, binary)
+                        executable.chmod(0o700)
+                    except OSError as exc:
+                        raise CheckpointError(f"Cannot publish trace binary: {exc}") from exc
                     built_fresh = True
         result.update(command=command, success=built_fresh, duration_s=time.monotonic() - started)
         return result
@@ -202,7 +228,7 @@ def collect_traces(checkpoint: TaskCheckpoint, config: TraceConfig, identity: di
             extra_env = {}
             with tempfile.TemporaryDirectory(prefix="btp-trace-") as temporary:
                 if candidate.language == "python":
-                    command = [str(Path(sys.executable).resolve()), str(HELPERS / "trace_python.py"), str(source)]
+                    command = [sys.executable, str(HELPERS / "trace_python.py"), str(source)]
                 else:
                     configuration = Path(temporary) / "config.json"
                     atomic_json(configuration, {"source": str(source)})

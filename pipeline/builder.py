@@ -64,7 +64,7 @@ def build_candidate(
 
     if candidate.language == "python":
         try:
-            compile(candidate.source, str(source_path), "exec")
+            compile(candidate.source, str(source_path), "exec", dont_inherit=True)
         except (SyntaxError, ValueError) as exc:
             return BuildResult(
                 success=False, language=candidate.language, source_path=str(source_path),

@@ -61,7 +61,7 @@ def main() -> None:
         emit({"type": "end", "termination": termination})
 
     try:
-        code = compile(source.read_bytes(), source_name, "exec")
+        code = compile(source.read_bytes(), source_name, "exec", dont_inherit=True)
         # Match ordinary script execution, without exposing wrapper argv/globals.
         sys.argv = [source_name]
         if hasattr(sys, "orig_argv"):

@@ -206,7 +206,10 @@ def run_capture(command: list[str], *, cwd: Path, timeout: float, stdin: str = "
         fail(f"Collector I/O failed: {type(exc).__name__}: {exc}")
     finally:
         if process is not None:
-            _cleanup(process, known_processes)
+            try:
+                _cleanup(process, known_processes)
+            except (OSError, subprocess.SubprocessError) as exc:
+                fail(f"Collector cleanup failed: {type(exc).__name__}: {exc}"[:1000])
             process.stdout.close()
             process.stderr.close()
         selector.close()
@@ -228,8 +231,13 @@ def run_capture(command: list[str], *, cwd: Path, timeout: float, stdin: str = "
                 fail("Debugger ended without a termination record")
         if python and truncated is None and error is None:
             if exit_code < 0:
-                termination = {"kind": "signal", "signal": signal.Signals(-exit_code).name,
-                               "exit_code": exit_code}
+                number = -exit_code
+                try:
+                    name = signal.Signals(number).name
+                except ValueError:
+                    name = f"SIG{number}"
+                termination = {"kind": "signal", "signal": name,
+                               "signal_number": number, "exit_code": exit_code}
             else:
                 termination = {**termination, "exit_code": exit_code}
         if not python and truncated is None and error is None and exit_code != 0:
