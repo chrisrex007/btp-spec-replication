@@ -40,10 +40,14 @@ class CandidateSource:
                 f"{language} candidate filename must end with "
                 f"{SUPPORTED_LANGUAGES[language]}"
             )
+        if "\x00" in filename:
+            raise ValueError("filename must not contain NUL")
+        filename.encode("utf-8")
         object.__setattr__(self, "filename", filename)
 
         if not isinstance(self.source, str) or not self.source.strip():
             raise ValueError("candidate source must be a non-empty string")
+        self.source.encode("utf-8")
 
     @classmethod
     def from_dict(cls, data: dict) -> "CandidateSource":

@@ -7,34 +7,30 @@ sanitized environment, but stronger OS-level sandboxing is still future work.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import os
+import math
+import signal
 from pathlib import Path
 import subprocess
 import time
 from typing import Mapping, Sequence
 
-
-def _as_text(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="surrogateescape")
-    return value
+from .artifacts import CapturedText
 
 
 @dataclass(frozen=True)
 class ExecutionResult:
-    """One invocation, with output decoded losslessly using UTF-8 surrogateescape.
+    """One invocation, with file-backed output decoded during JSON persistence.
 
-    Encode stdout/stderr with the same codec and error handler to recover the
-    original bytes. JSON writers must escape surrogate code points.
+    Persist to_dict() with artifacts.write_json: captured output is streamed as
+    UTF-8 surrogateescape text with ASCII JSON escapes, preserving every byte.
     """
 
     command: tuple[str, ...]
     stdin: str
-    stdout: str
-    stderr: str
+    stdout: CapturedText
+    stderr: CapturedText
     exit_code: int | None
     timed_out: bool
     duration_s: float
@@ -49,7 +45,7 @@ class ExecutionResult:
         )
 
     def to_dict(self) -> dict:
-        data = asdict(self)
+        data = dict(vars(self))
         data["command"] = list(self.command)
         data["succeeded"] = self.succeeded
         return data
@@ -59,6 +55,7 @@ def run_program(
     command: Sequence[str],
     stdin_data: str,
     *,
+    output_dir: str | Path,
     timeout_seconds: float = 2.0,
     cwd: str | Path | None = None,
     env: Mapping[str, str] | None = None,
@@ -76,7 +73,7 @@ def run_program(
 
     if not command:
         raise ValueError("command must contain at least one element")
-    if timeout_seconds <= 0:
+    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be positive")
 
     cmd = tuple(str(part) for part in command)
@@ -85,46 +82,61 @@ def run_program(
     else:
         run_env = {} if env is None else dict(env)
 
+    # Validate before launching any process. Never normalize stdin bytes.
+    stdin_bytes = stdin_data.encode("utf-8")
+    if os.name != "posix":
+        raise RuntimeError("Process-group cleanup requires a POSIX host")
+    capture_dir = Path(output_dir).resolve()
+    capture_dir.mkdir(parents=True, exist_ok=True)
+    stdout = CapturedText(capture_dir / "stdout.bin")
+    stderr = CapturedText(capture_dir / "stderr.bin")
     started = time.monotonic()
+    timed_out = False
+    exit_code = None
+    launch_error = None
+    with stdout.path.open("xb") as out, stderr.path.open("xb") as err:
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=out,
+                stderr=err,
+                cwd=None if cwd is None else str(cwd),
+                env=run_env,
+                shell=False,
+                start_new_session=True,
+            )
+        except (OSError, ValueError) as exc:
+            launch_error = f"{type(exc).__name__}: {exc}"
+        else:
+            try:
+                proc.communicate(input=stdin_bytes, timeout=timeout_seconds)
+                exit_code = proc.returncode
+            except subprocess.TimeoutExpired:
+                timed_out = True
+            finally:
+                # Clean up descendants even if their parent exited successfully.
+                # Descendants that deliberately escape the group require OS isolation.
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                finally:
+                    try:
+                        if proc.stdin is not None:
+                            proc.stdin.close()
+                    except BrokenPipeError:
+                        pass
+                    finally:
+                        proc.wait()
 
-    try:
-        proc = subprocess.run(
-            cmd,
-            input=stdin_data.encode("utf-8"),
-            capture_output=True,
-            timeout=timeout_seconds,
-            cwd=None if cwd is None else str(cwd),
-            env=run_env,
-            shell=False,
-            check=False,
-        )
-        return ExecutionResult(
-            command=cmd,
-            stdin=stdin_data,
-            stdout=_as_text(proc.stdout),
-            stderr=_as_text(proc.stderr),
-            exit_code=proc.returncode,
-            timed_out=False,
-            duration_s=time.monotonic() - started,
-        )
-    except subprocess.TimeoutExpired as exc:
-        return ExecutionResult(
-            command=cmd,
-            stdin=stdin_data,
-            stdout=_as_text(exc.stdout),
-            stderr=_as_text(exc.stderr),
-            exit_code=None,
-            timed_out=True,
-            duration_s=time.monotonic() - started,
-        )
-    except OSError as exc:
-        return ExecutionResult(
-            command=cmd,
-            stdin=stdin_data,
-            stdout="",
-            stderr="",
-            exit_code=None,
-            timed_out=False,
-            duration_s=time.monotonic() - started,
-            launch_error=f"{type(exc).__name__}: {exc}",
-        )
+    return ExecutionResult(
+        command=cmd,
+        stdin=stdin_data,
+        stdout=stdout,
+        stderr=stderr,
+        exit_code=exit_code,
+        timed_out=timed_out,
+        duration_s=time.monotonic() - started,
+        launch_error=launch_error,
+    )

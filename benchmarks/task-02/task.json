@@ -1,0 +1,17 @@
+{
+  "name": "task-02",
+  "specification": "spec.md",
+  "reference": {
+    "command": [
+      "/usr/bin/env",
+      "-i",
+      "LC_ALL=C.UTF-8",
+      "BC_LINE_LENGTH=0",
+      "/usr/bin/bc",
+      "-q"
+    ],
+    "cwd": "."
+  },
+  "input_format": "A complete finite program of at most 40 nonempty LF-terminated lines. Each line is an expression, single-letter variable assignment, scale assignment, or blank line, using only the grammar and numeric bounds in the specification. All divisors are nonzero and square roots have nonnegative arguments.",
+  "timeout_seconds": 3.0
+}

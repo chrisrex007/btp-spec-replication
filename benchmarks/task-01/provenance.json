@@ -1,0 +1,14 @@
+{
+  "software": "jq",
+  "version": "1.6-19.el9_8.2",
+  "source_url": "https://jqlang.org/manual/v1.6/",
+  "group": "utility",
+  "specification_sha256": "8f70a4975e24611818f088045855fc849cad2199d7d79750e24f87278b03eb41",
+  "task_config_sha256": "c834db79b126444d30ef1a0dbff69549b3d4eb63134997a10aea94d2c22c4c2b",
+  "validation": "Not executed by agent; behavioral validation is user-managed.",
+  "reference_binary": "/usr/bin/jq",
+  "reference_binary_sha256": "7fe1325a336c77e462d6b9829bc83e85610b97e4205fa8c2bbe435306dba25db",
+  "reference_status": "installed; not executed",
+  "reference_environment": "Empty environment except LC_ALL=C.UTF-8, plus BC_LINE_LENGTH=0 for task-02.",
+  "serialization_source": "https://github.com/jqlang/jq/blob/jq-1.6/src/jv_print.c"
+}

@@ -47,9 +47,10 @@ indirect regeneration through a rewritten specification.
 
 Preserve the repository-root `.env` format: one `KEY=VALUE` entry per line,
 optional `#` comments, and matching single or double quotes around values.
-Existing shell values take precedence. The client uses `BTP_MODEL`,
-`BTP_LLM_ENDPOINT`, and optional `BTP_LLM_API_KEY`; optional attribution headers
-use `BTP_HTTP_REFERER` and `BTP_X_TITLE`. `.env.example` contains placeholders.
+Existing shell values take precedence. The client requires only `BTP_MODEL`, a
+single local checkpoint directory name beneath `~/models`. Use direct offline
+vLLM inference; do not restore HTTP endpoints, API keys, attribution headers,
+remote model downloads, or model fallback. `.env.example` contains a placeholder.
 
 Never read, print, copy, or commit private `.env` values merely to document its
 format. Deployment infrastructure, scheduler details, and specific hardware or
@@ -61,8 +62,9 @@ Keep generated runs under ignored `runs/<run-id>/`. Preserve source, build
 diagnostics, complete stdin tests, execution results, failures, summaries, and
 LLM records; do not remove artifacts aggressively.
 
-LLM records must retain prompts, model, sanitized endpoint, seed, temperature,
-token limit, response schema and schema name, response or error, and latency.
+LLM records must retain prompts, model, resolved local model path, offline backend,
+runtime versions, inference settings, seed, temperature, token limit, response
+schema and schema name, response or error, and latency.
 Preserve failed logical calls as well as successful calls. Never log credentials.
 
 Subprocess output uses lossless UTF-8 `surrogateescape` decoding internally.

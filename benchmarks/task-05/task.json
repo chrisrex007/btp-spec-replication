@@ -1,0 +1,15 @@
+{
+  "name": "task-05",
+  "specification": "spec.md",
+  "reference": {
+    "command": [
+      "/usr/bin/env",
+      "-i",
+      "LC_ALL=C.UTF-8",
+      "../../runs/reference-build/task-05"
+    ],
+    "cwd": "."
+  },
+  "input_format": "First line: integers n and t. Second line: n array integers. Next t lines: l r. All constraints and indexing are given in the specification. Each test case is one complete input, not a fragment.",
+  "timeout_seconds": 5.0
+}

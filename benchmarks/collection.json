@@ -1,0 +1,50 @@
+{
+  "selection_policy": "Preselected before observing any baseline results; retain every result including 100% scores. No failure-conditioned filtering or candidate modification.",
+  "model_recommendation": "qwen2.5-coder-14b",
+  "requested_tests": 20,
+  "seed": 42,
+  "tasks": [
+    {
+      "name": "task-01",
+      "group": "utility",
+      "task_config": "task-01/task.json",
+      "provenance": "task-01/provenance.json"
+    },
+    {
+      "name": "task-02",
+      "group": "utility",
+      "task_config": "task-02/task.json",
+      "provenance": "task-02/provenance.json"
+    },
+    {
+      "name": "task-03",
+      "group": "utility",
+      "task_config": "task-03/task.json",
+      "provenance": "task-03/provenance.json"
+    },
+    {
+      "name": "task-04",
+      "group": "utility",
+      "task_config": "task-04/task.json",
+      "provenance": "task-04/provenance.json"
+    },
+    {
+      "name": "task-05",
+      "group": "algorithmic",
+      "task_config": "task-05/task.json",
+      "provenance": "task-05/provenance.json"
+    },
+    {
+      "name": "task-06",
+      "group": "algorithmic",
+      "task_config": "task-06/task.json",
+      "provenance": "task-06/provenance.json"
+    },
+    {
+      "name": "task-07",
+      "group": "algorithmic",
+      "task_config": "task-07/task.json",
+      "provenance": "task-07/provenance.json"
+    }
+  ]
+}

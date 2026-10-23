@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-import json
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 
+from .artifacts import outputs_equal, write_json
 from .execution import ExecutionResult, run_program
 
 
@@ -46,7 +46,7 @@ def compare_results(
     reference: ExecutionResult,
     candidate: ExecutionResult,
 ) -> DifferentialResult:
-    """Compare losslessly decoded stdout, preserving every original byte."""
+    """Compare stdout files byte for byte without loading them into memory."""
 
     if reference.timed_out:
         status = ComparisonStatus.REFERENCE_TIMEOUT
@@ -56,7 +56,7 @@ def compare_results(
         status = ComparisonStatus.CANDIDATE_TIMEOUT
     elif not candidate.succeeded:
         status = ComparisonStatus.CANDIDATE_ERROR
-    elif candidate.stdout != reference.stdout:
+    elif not outputs_equal(candidate.stdout, reference.stdout):
         status = ComparisonStatus.OUTPUT_MISMATCH
     else:
         status = ComparisonStatus.PASS
@@ -74,9 +74,11 @@ def run_differential_case(
     candidate_command: Sequence[str],
     test_input: str,
     *,
+    output_dir: str | Path,
     timeout_seconds: float = 2.0,
     reference_cwd: str | Path | None = None,
     candidate_cwd: str | Path | None = None,
+    on_execution: Callable[[str, ExecutionResult], None] | None = None,
 ) -> DifferentialResult:
     """Run one testcase against both programs and classify the result."""
 
@@ -85,12 +87,17 @@ def run_differential_case(
         test_input,
         timeout_seconds=timeout_seconds,
         cwd=reference_cwd,
+        output_dir=Path(output_dir) / "reference",
     )
+    if on_execution is not None:
+        on_execution("reference", reference)
+    write_json(Path(output_dir) / "reference.json", reference.to_dict())
     candidate = run_program(
         candidate_command,
         test_input,
         timeout_seconds=timeout_seconds,
         cwd=candidate_cwd,
+        output_dir=Path(output_dir) / "candidate",
         env={
             "LANG": "C.UTF-8",
             "LC_ALL": "C.UTF-8",
@@ -98,6 +105,9 @@ def run_differential_case(
         },
         inherit_env=False,
     )
+    if on_execution is not None:
+        on_execution("candidate", candidate)
+    write_json(Path(output_dir) / "candidate.json", candidate.to_dict())
     return compare_results(test_input, reference, candidate)
 
 
@@ -106,6 +116,7 @@ def run_differential_suite(
     candidate_command: Sequence[str],
     test_inputs: Iterable[str],
     *,
+    output_dir: str | Path,
     timeout_seconds: float = 2.0,
     reference_cwd: str | Path | None = None,
     candidate_cwd: str | Path | None = None,
@@ -117,11 +128,12 @@ def run_differential_suite(
             reference_command,
             candidate_command,
             test_input,
+            output_dir=Path(output_dir) / f"{index:06d}",
             timeout_seconds=timeout_seconds,
             reference_cwd=reference_cwd,
             candidate_cwd=candidate_cwd,
         )
-        for test_input in test_inputs
+        for index, test_input in enumerate(test_inputs, 1)
     ]
 
 
@@ -129,7 +141,4 @@ def write_results(path: str | Path, results: Iterable[DifferentialResult]) -> No
     """Persist differential results as human-readable JSON."""
 
     payload = [result.to_dict() for result in results]
-    Path(path).write_text(
-        json.dumps(payload, ensure_ascii=True, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    write_json(Path(path), payload)

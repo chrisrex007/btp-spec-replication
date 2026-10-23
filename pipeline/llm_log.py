@@ -21,10 +21,11 @@ def log_call(
     response: str | None,
     latency_s: float,
     *,
-    endpoint: str,
+    inference_metadata: dict,
     json_schema: dict | None,
     schema_name: str,
     error: dict | None = None,
+    completion_metadata: dict | None = None,
 ) -> None:
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -32,7 +33,7 @@ def log_call(
         "iteration": iteration,
         "step": step,
         "model": model,
-        "endpoint": endpoint,
+        "inference": inference_metadata,
         "seed": seed,
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -42,6 +43,7 @@ def log_call(
         "schema_name": schema_name,
         "status": "error" if error is not None else "success",
         "response": response,
+        "completion": completion_metadata,
         "error": error,
         "latency_s": latency_s,
     }

@@ -1,0 +1,32 @@
+{
+  "software": "Codeforces 438D / The Child and Sequence",
+  "version": null,
+  "source_url": "https://codeforces.com/problemset/problem/438/D",
+  "group": "algorithmic",
+  "specification_sha256": "910cb5e6d2f088f2c8bd79c61fb3303f1e4b06edfdfa2e07191dc2525f67ddfb",
+  "task_config_sha256": "3bc58e341784427706ded29769ff5f5ad1e604a62bc5bf78a156deeb633e97de",
+  "validation": "Not executed by agent; behavioral validation is user-managed.",
+  "dataset": "deepmind/code_contests",
+  "dataset_revision": "802411c3010cb00d1b05bad57ca77365a3c699d6",
+  "dataset_url": "https://huggingface.co/datasets/deepmind/code_contests",
+  "dataset_license": "CC-BY-4.0",
+  "reference_status": "built; not executed",
+  "dataset_split": "train",
+  "dataset_record_name": "438_D. The Child and Sequence",
+  "dataset_shard": "data/train-00028-of-00039-79a302af3c924863.parquet",
+  "dataset_row_in_shard": 152,
+  "solution_index": 2,
+  "solution_language": "CPP",
+  "reference_source": "reference.cpp",
+  "reference_source_sha256": "e8a1e581969d5d3e0a47b1108127279f4f219377f2a8e48527fda8cb82043c3f",
+  "selection_note": "Static portability review before evaluation: selected an accepted stdin/stdout solution with conventional integer-per-line output and no platform-specific %I64d formatting; no observed baseline results were used.",
+  "dataset_shard_sha256": "f32b70263520ba04d01efda103d8ddbbf2f158b60931caae83d67f5d49b6dc62",
+  "built_reference": "../../runs/reference-build/task-07",
+  "built_reference_sha256": "1328fd9edee555affb659eac1333cf14e5cab6163c7899e6328f0de9c32fd2b2",
+  "compiler": "g++ (GCC) 11.5.0 20240719 (Red Hat 11.5.0-14)",
+  "build_diagnostics": "../../runs/reference-build/task-07.build.log",
+  "build_flags": [
+    "-O2",
+    "-std=c++20"
+  ]
+}

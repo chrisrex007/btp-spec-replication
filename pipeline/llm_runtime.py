@@ -33,7 +33,7 @@ def logged_call(
         "target": target,
         "iteration": iteration,
         "model": llm_client.get_model(),
-        "endpoint": llm_client.get_log_endpoint(),
+        "inference_metadata": llm_client.inference_metadata(),
         "seed": seed,
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -42,8 +42,11 @@ def logged_call(
         "json_schema": json_schema,
         "schema_name": schema_name,
     }
+    completion_metadata = {}
     started = time.monotonic()
     try:
+        model_path = llm_client.resolve_model_path()
+        metadata["inference_metadata"]["model_path"] = str(model_path)
         response = llm_client.call(
             system_prompt,
             user_prompt,
@@ -52,20 +55,30 @@ def logged_call(
             seed=seed,
             json_schema=json_schema,
             schema_name=schema_name,
+            completion_metadata=completion_metadata,
         )
     except Exception as exc:
         llm_log.log_call(
             **metadata,
             response=None,
+            completion_metadata=completion_metadata or None,
             latency_s=time.monotonic() - started,
             error={
                 "type": type(exc).__name__,
-                "message": llm_client.redact_diagnostic(str(exc)),
+                "message": str(exc),
             },
         )
         raise
 
     llm_log.log_call(
-        **metadata, response=response, latency_s=time.monotonic() - started
+        **metadata,
+        response=response,
+        completion_metadata=completion_metadata or None,
+        latency_s=time.monotonic() - started,
     )
+    if completion_metadata.get("finish_reason") == "length":
+        raise ValueError(
+            f"{step} reached its {max_tokens}-token output limit; "
+            "the complete raw response and token usage are preserved in llm_log.jsonl"
+        )
     return response

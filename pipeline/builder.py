@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import sys
 
+from .artifacts import CapturedText
 from .candidate import CandidateSource
 from .execution import run_program
 
@@ -17,8 +18,8 @@ class BuildResult:
     language: str
     source_path: str
     run_command: tuple[str, ...] | None
-    build_stdout: str = ""
-    build_stderr: str = ""
+    build_stdout: str | CapturedText = ""
+    build_stderr: str | CapturedText = ""
     exit_code: int | None = None
     timed_out: bool = False
     error: str | None = None
@@ -83,6 +84,7 @@ def build_candidate(
         compile_command,
         "",
         timeout_seconds=compile_timeout_seconds,
+        output_dir=out_dir / "build-output",
     )
 
     if not result.succeeded:
