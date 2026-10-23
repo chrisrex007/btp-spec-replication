@@ -7,7 +7,7 @@ Given a natural-language specification, a valid stdin description, and a hidden
 reference executable, synthesize a replacement and measure behavioural agreement.
 The goal is behavioural equivalence, not source recovery.
 
-The active branch is `experiments/no-feedback`. Keep it self-contained and limited
+The active branch is `experiments/no-feedback-server-inference`. Keep it self-contained and limited
 to the one-shot baseline. Generate one candidate, build it, generate stdin tests,
 compare executions, and persist artifacts. Do not add subsequent candidate
 modification, failure-conditioned inference, or components belonging to other
@@ -47,10 +47,11 @@ indirect regeneration through a rewritten specification.
 
 Preserve the repository-root `.env` format: one `KEY=VALUE` entry per line,
 optional `#` comments, and matching single or double quotes around values.
-Existing shell values take precedence. The client requires only `BTP_MODEL`, a
-single local checkpoint directory name beneath `~/models`. Use direct offline
-vLLM inference; do not restore HTTP endpoints, API keys, attribution headers,
-remote model downloads, or model fallback. `.env.example` contains a placeholder.
+Existing shell values take precedence. This server-inference branch uses
+`BTP_MODEL` as the served model name, `BTP_BASE_URL` for the HTTP API base URL,
+and optional `BTP_HTTP_TIMEOUT` in seconds. Use one HTTP chat-completion request
+per logical call; do not add retries, fallback models, or model downloads.
+Do not add API keys or log credentials. `.env.example` contains placeholders.
 
 Never read, print, copy, or commit private `.env` values merely to document its
 format. Deployment infrastructure, scheduler details, and specific hardware or
@@ -62,9 +63,10 @@ Keep generated runs under ignored `runs/<run-id>/`. Preserve source, build
 diagnostics, complete stdin tests, execution results, failures, summaries, and
 LLM records; do not remove artifacts aggressively.
 
-LLM records must retain prompts, model, resolved local model path, offline backend,
-runtime versions, inference settings, seed, temperature, token limit, response
+LLM records must retain prompts, model, HTTP backend, client runtime versions, inference settings, seed, temperature, token limit, response
 schema and schema name, response or error, and latency.
+Server model path, runtime versions, and launch settings must be retained separately
+by the user; do not claim that client metadata verifies server provenance.
 Preserve failed logical calls as well as successful calls. Never log credentials.
 
 Subprocess output uses lossless UTF-8 `surrogateescape` decoding internally.

@@ -1,132 +1,65 @@
-"""Direct, schema-constrained inference with a local vLLM checkpoint."""
+"""One-shot schema-constrained requests to a vLLM-compatible chat server."""
 
 from __future__ import annotations
 
-from importlib import metadata
 import json
+import math
 import os
-from pathlib import Path
-import re
 import sys
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .env import load_dotenv
 
 
 load_dotenv()
 
-ENGINE_SETTINGS = {
-    "dtype": "bfloat16",
-    "max_model_len": 32768,
-    "max_num_seqs": 1,
-    "enforce_eager": True,
-    "gpu_memory_utilization": 0.80,
-    "tensor_parallel_size": 1,
-    "trust_remote_code": False,
-    "generation_config": "vllm",
-    "seed": 42,
-    "structured_outputs_config": {
-        "backend": "xgrammar",
-        "disable_any_whitespace": True,
-    },
-}
 SAMPLING_SETTINGS = {
     "n": 1,
     "top_p": 1.0,
     "top_k": -1,
     "repetition_penalty": 1.0,
 }
-_engine = None
-_engine_model_path: Path | None = None
 
 
 def get_model() -> str:
-    """Return the configured directory name, including an unset value for logging."""
+    """Return the server's configured served model name."""
     return os.environ.get("BTP_MODEL", "").strip()
 
 
-def resolve_model_path() -> Path:
-    """Reject remote IDs, traversal, escaped symlinks, and incomplete checkpoints."""
-    name = get_model()
-    if not name:
-        raise ValueError(
-            "BTP_MODEL is required; set it to a directory name under ~/models"
-        )
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
-        raise ValueError("BTP_MODEL must be a single directory name under ~/models")
-    root = (Path.home() / "models").resolve()
-    model_path = (root / name).resolve()
-    if model_path.parent != root or not model_path.is_dir():
-        raise ValueError(f"Local model directory is missing or outside ~/models: {name}")
-
-    def require_file(filename: str) -> Path:
-        path = (model_path / filename).resolve()
-        if not path.is_relative_to(model_path) or not path.is_file():
-            raise ValueError(
-                f"Local checkpoint file is missing or outside its directory: {filename}"
-            )
-        return path
-
-    require_file("config.json")
-    require_file("tokenizer_config.json")
-    require_file("tokenizer.json")
-    index = model_path / "model.safetensors.index.json"
-    if index.is_file():
-        data = json.loads(require_file(index.name).read_text(encoding="utf-8"))
-        weight_map = data.get("weight_map")
-        if not isinstance(weight_map, dict) or not weight_map:
-            raise ValueError("Local checkpoint has an empty or invalid weight map")
-        if not all(isinstance(value, str) for value in weight_map.values()):
-            raise ValueError("Local checkpoint weight map must contain filenames")
-        for filename in sorted(set(weight_map.values())):
-            require_file(filename)
-    else:
-        require_file("model.safetensors")
-    return model_path
+def _configuration() -> tuple[str, float]:
+    base = os.environ.get("BTP_BASE_URL", "http://127.0.0.1:8000/v1").strip()
+    parsed = urlsplit(base)
+    if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+            or parsed.username is not None or parsed.password is not None
+            or parsed.query or parsed.fragment):
+        raise ValueError("BTP_BASE_URL must be an HTTP(S) base URL without credentials, query, or fragment")
+    if not get_model():
+        raise ValueError("BTP_MODEL is required; use the server's served model name")
+    timeout = float(os.environ.get("BTP_HTTP_TIMEOUT", "1800"))
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("BTP_HTTP_TIMEOUT must be a finite positive number of seconds")
+    return base.rstrip("/") + "/chat/completions", timeout
 
 
 def inference_metadata() -> dict:
-    """Inspect package versions without importing GPU libraries or loading weights."""
-    versions = {"python": sys.version.split()[0]}
-    for package in ("vllm", "torch", "transformers", "xgrammar"):
-        try:
-            versions[package] = metadata.version(package)
-        except metadata.PackageNotFoundError:
-            versions[package] = None
+    """Record client settings; server internals cannot be inferred locally."""
+    # Do not persist raw URLs: they may accidentally contain credentials.
     return {
-        "backend": "vllm_offline",
+        "backend": "vllm_http",
         "model_path": None,
-        "runtime_versions": versions,
-        "engine_settings": dict(ENGINE_SETTINGS),
+        "runtime_versions": {"python": sys.version.split()[0]},
+        "engine_settings": None,
         "sampling_settings": dict(SAMPLING_SETTINGS),
-        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        "http_timeout_s": os.environ.get("BTP_HTTP_TIMEOUT", "1800"),
+        "server_metadata": "Server model path, versions and launch settings must be retained separately",
     }
 
 
-def _get_engine():
-    global _engine, _engine_model_path
-    model_path = resolve_model_path()
-    if _engine is not None:
-        if model_path != _engine_model_path:
-            raise RuntimeError("BTP_MODEL cannot change after the local model has loaded")
-        return _engine
-
-    # Set these before importing vLLM/Transformers/Hugging Face libraries.
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    os.environ["TRANSFORMERS_OFFLINE"] = "1"
-    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-    os.environ["VLLM_NO_USAGE_STATS"] = "1"
-    os.environ["VLLM_DO_NOT_TRACK"] = "1"
-    try:
-        from vllm import LLM
-    except ImportError as exc:
-        raise RuntimeError(
-            "Offline inference requires the documented Python 3.12 vLLM "
-            f"environment: {exc}"
-        ) from exc
-
-    _engine = LLM(model=str(model_path), tokenizer=str(model_path), **ENGINE_SETTINGS)
-    _engine_model_path = model_path
-    return _engine
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def call(
@@ -140,54 +73,58 @@ def call(
     *,
     completion_metadata: dict | None = None,
 ) -> str:
-    """Generate once locally, using the checkpoint's chat template and JSON schema.
-
-    schema_name remains part of the caller/logging interface; vLLM accepts the
-    schema itself. Optional completion_metadata receives termination and token
-    counts without changing the string return value. Truncated text is returned
-    intact for logging and parsing. There are no inference retries or fallbacks.
-    """
+    """Request exactly one completion, without retries or model fallback."""
     if completion_metadata is not None:
         completion_metadata.clear()
-    engine = _get_engine()
-    from vllm import SamplingParams
-    from vllm.sampling_params import StructuredOutputsParams
-
-    sampling = SamplingParams(
-        temperature=temperature,
-        max_tokens=max_tokens,
-        seed=seed,
-        structured_outputs=(
-            None if json_schema is None else StructuredOutputsParams(json=json_schema)
-        ),
-        **SAMPLING_SETTINGS,
-    )
-    outputs = engine.chat(
-        [
+    endpoint, timeout = _configuration()
+    payload = {
+        "model": get_model(),
+        "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        sampling_params=sampling,
-        use_tqdm=False,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "seed": seed,
+        "stream": False,
+        **SAMPLING_SETTINGS,
+    }
+    if json_schema is not None:
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": schema_name, "schema": json_schema},
+        }
+    request = Request(
+        endpoint,
+        data=json.dumps(payload, ensure_ascii=True).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
     )
-    if len(outputs) != 1 or len(outputs[0].outputs) != 1:
-        raise RuntimeError("Local inference did not return exactly one completion")
-    request = outputs[0]
-    completion = request.outputs[0]
+    try:
+        with build_opener(_NoRedirect()).open(request, timeout=timeout) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        # Server error bodies and URLs may contain secrets; do not log them.
+        status = exc.code
+        exc.close()
+        raise RuntimeError(f"Chat completion request failed with HTTP {status}") from None
+    except URLError:
+        raise RuntimeError("Chat completion server connection failed") from None
+    if not isinstance(result, dict):
+        raise RuntimeError("Chat completion response must be an object")
+    choices = result.get("choices")
+    if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+        raise RuntimeError("Server did not return exactly one completion")
+    completion = choices[0]
     if completion_metadata is not None:
-        prompt_tokens = (
-            None if request.prompt_token_ids is None else len(request.prompt_token_ids)
-        )
-        completion_tokens = len(completion.token_ids)
         completion_metadata.update({
-            "finish_reason": completion.finish_reason,
-            "stop_reason": completion.stop_reason,
-            "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": (
-                    None if prompt_tokens is None else prompt_tokens + completion_tokens
-                ),
-            },
+            "finish_reason": completion.get("finish_reason"),
+            "stop_reason": completion.get("stop_reason"),
+            "usage": result.get("usage"),
+            "model": result.get("model"),
+            "system_fingerprint": result.get("system_fingerprint"),
         })
-    return completion.text
+    message = completion.get("message")
+    if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+        raise RuntimeError("Server completion does not contain text content")
+    return message["content"]

@@ -45,8 +45,6 @@ def logged_call(
     completion_metadata = {}
     started = time.monotonic()
     try:
-        model_path = llm_client.resolve_model_path()
-        metadata["inference_metadata"]["model_path"] = str(model_path)
         response = llm_client.call(
             system_prompt,
             user_prompt,
