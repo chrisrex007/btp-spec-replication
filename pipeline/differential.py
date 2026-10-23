@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 
 from .execution import ExecutionResult, run_program
 from .artifacts import atomic_json
@@ -18,6 +18,10 @@ class ComparisonStatus(str, Enum):
     REFERENCE_ERROR = "reference_error"
     CANDIDATE_TIMEOUT = "candidate_timeout"
     CANDIDATE_ERROR = "candidate_error"
+
+
+class EvaluationInterrupted(Exception):
+    """A cooperative stop left the current evaluation suite uncommitted."""
 
 
 @dataclass(frozen=True)
@@ -109,20 +113,25 @@ def run_differential_suite(
     timeout_seconds: float = 2.0,
     reference_cwd: str | Path | None = None,
     candidate_cwd: str | Path | None = None,
+    should_stop: Callable[[], bool] = lambda: False,
 ) -> list[DifferentialResult]:
     """Run an iterable of testcases sequentially."""
 
-    return [
-        run_differential_case(
+    results = []
+    for test_input in test_inputs:
+        if should_stop():
+            raise EvaluationInterrupted()
+        results.append(run_differential_case(
             reference_command,
             candidate_command,
             test_input,
             timeout_seconds=timeout_seconds,
             reference_cwd=reference_cwd,
             candidate_cwd=candidate_cwd,
-        )
-        for test_input in test_inputs
-    ]
+        ))
+    if should_stop():
+        raise EvaluationInterrupted()
+    return results
 
 
 def write_results(path: str | Path, results: Iterable[DifferentialResult]) -> None:

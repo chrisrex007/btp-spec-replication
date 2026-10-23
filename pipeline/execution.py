@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import os
 from pathlib import Path
+import signal
 import subprocess
 import time
 from typing import Mapping, Sequence
@@ -88,21 +89,37 @@ def run_program(
     started = time.monotonic()
 
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
-            input=stdin_data.encode("utf-8"),
-            capture_output=True,
-            timeout=timeout_seconds,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             cwd=None if cwd is None else str(cwd),
             env=run_env,
             shell=False,
-            check=False,
+            start_new_session=os.name == "posix",
+            creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0),
         )
+        try:
+            stdout, stderr = proc.communicate(input=stdin_data.encode("utf-8"), timeout=timeout_seconds)
+        finally:
+            # Kill the owned session's process group even if its leader already
+            # exited. Ordinary fork/spawn descendants must not survive a case.
+            # Deliberately detached sessions require stronger OS isolation.
+            try:
+                if os.name == "posix":
+                    os.killpg(proc.pid, signal.SIGKILL)
+                elif proc.poll() is None:
+                    proc.kill()
+            except ProcessLookupError:
+                pass
+            finally:
+                proc.wait()
+                for stream in (proc.stdin, proc.stdout, proc.stderr):
+                    stream.close()
         return ExecutionResult(
             command=cmd,
             stdin=stdin_data,
-            stdout=_as_text(proc.stdout),
-            stderr=_as_text(proc.stderr),
+            stdout=_as_text(stdout),
+            stderr=_as_text(stderr),
             exit_code=proc.returncode,
             timed_out=False,
             duration_s=time.monotonic() - started,

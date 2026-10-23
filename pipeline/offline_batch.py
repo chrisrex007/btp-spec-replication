@@ -16,7 +16,7 @@ from .artifacts import append_jsonl, atomic_json, digest, implementation_digest,
 from .builder import build_candidate
 from .candidate import CandidateSource
 from .checkpoints import CheckpointError, TaskCheckpoint, checked_payload, verify_payload
-from .differential import run_differential_suite
+from .differential import EvaluationInterrupted, run_differential_suite
 from .generator import CANDIDATE_SCHEMA, candidate_messages, parse_candidate_response
 from .llm_log import log_call, request_record, response_record
 from .offline_runtime import (
@@ -319,7 +319,8 @@ def _consume(checkpoint: TaskCheckpoint) -> None:
     checkpoint.save()
 
 
-def _evaluate(task: BenchmarkTask, checkpoint: TaskCheckpoint, config: BatchConfig) -> None:
+def _evaluate(task: BenchmarkTask, checkpoint: TaskCheckpoint, config: BatchConfig,
+              should_stop=lambda: False) -> None:
     checkpoint.validate()
     iteration = checkpoint.state["attempted_iteration"]
     directory = _round(iteration)
@@ -329,11 +330,15 @@ def _evaluate(task: BenchmarkTask, checkpoint: TaskCheckpoint, config: BatchConf
     else:
         build = checkpoint.read_json(directory + "/build.json")
         tests = checkpoint.read_json("tests.json")
-        results = run_differential_suite(
-            task.reference_command, build["run_command"], tests,
-            timeout_seconds=task.timeout_seconds, reference_cwd=task.reference_cwd,
-            candidate_cwd=checkpoint.path(directory + "/candidate"),
-        )
+        try:
+            results = run_differential_suite(
+                task.reference_command, build["run_command"], tests,
+                timeout_seconds=task.timeout_seconds, reference_cwd=task.reference_cwd,
+                candidate_cwd=checkpoint.path(directory + "/candidate"),
+                should_stop=should_stop,
+            )
+        except EvaluationInterrupted:
+            return  # Resume may repeat this unfinished, uncommitted suite.
         checkpoint.validate()
         payload = [item.to_dict() for item in results]
         checkpoint.write_json(results_path, payload)
@@ -431,7 +436,7 @@ def run_offline_batch(tasks: list[BenchmarkTask], *, config: BatchConfig,
                 break
             evaluating = [cp for cp in checkpoints if cp.state["stage"] == "evaluate"]
             with ThreadPoolExecutor(max_workers=config.workers) as pool:
-                list(pool.map(lambda cp: _evaluate(by_name[cp.state["task"]], cp, config), evaluating))
+                list(pool.map(lambda cp: _evaluate(by_name[cp.state["task"]], cp, config, should_stop), evaluating))
             if should_stop():
                 break
             tracing = [cp for cp in checkpoints if cp.state["stage"] in {"trace_prepare", "trace_collect"}]
