@@ -1,4 +1,4 @@
-"""Behavioural-class feedback for direct candidate repair."""
+"""Raw failures and candidate source-line traces for direct repair."""
 
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ def repair_messages(
     specification: str,
     input_format: str,
     candidate: CandidateSource,
-    abstraction: dict,
+    failures: list[dict],
 ) -> tuple[str, str, dict]:
-    """Create a direct repair request without attaching raw evidence cases."""
+    """Attach every current failure and its explicitly bounded candidate trace."""
 
-    feedback_text = json.dumps(abstraction, ensure_ascii=True, indent=2)
+    feedback_text = json.dumps(failures, ensure_ascii=True, separators=(",", ":"))
     user_prompt = (
         "## Specification\n\n"
         + specification
@@ -32,7 +32,7 @@ def repair_messages(
         + f"Language: {candidate.language}\nFilename: {candidate.filename}\n"
         + "```\n"
         + candidate.source
-        + "\n```\n\n## Behavioural failure classes\n\n"
+        + "\n```\n\n## Raw failures and candidate traces\n\n"
         + feedback_text
         + "\n\nReturn a complete repaired implementation."
     )

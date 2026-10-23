@@ -3,8 +3,8 @@
 Updated: 2026-10-22.
 
 Completing this roadmap remains the highest implementation priority. Work is
-reviewed one phase at a time; raw readiness and abstract feedback are approved.
-Path/trace and comparison still require review before implementation. Source
+reviewed one phase at a time; raw readiness, abstract and path feedback are approved.
+Comparison still requires review before implementation. Source
 availability does not establish empirical validation.
 
 ## Five branches in order
@@ -13,8 +13,8 @@ availability does not establish empirical validation.
 | --- | --- | --- |
 | 1 | `experiments/no-feedback` | One generated candidate, local inference, one evaluation; shared runtime prerequisite implemented separately; user validation pending |
 | 2 | `experiments/raw-feedback` | Independent snapshot at `fc95a26`: raw repair, schema-2 resume and artifacts implemented; user validation pending |
-| 3 | `experiments/abstract-feedback` | Current phase: behavioural abstraction, classes-only direct repair and separate resumable artifacts implemented for user validation |
-| 4 | `experiments/path-feedback` | Planned: Python/C++ candidate-only trace feedback in direct repair |
+| 3 | `experiments/abstract-feedback` | Independent snapshot at `672b099`: behavioural abstraction and classes-only direct repair; user validation pending |
+| 4 | `experiments/path-feedback` | Current phase: raw failures plus Python/C++ candidate source-line traces, separate resumable artifacts; user validation pending |
 | 5 | `experiments/comparison` | Planned: four-arm integration, shared pools, metrics and reproducible reporting |
 
 Use five phase branches total, six including `main`. Create future branches
@@ -51,7 +51,7 @@ Model/runtime compatibility and behavioural outcomes remain empirically pending
 until the user runs their own tasks. Validation discoveries must be carried
 deliberately into the active continuation branch and, where shared, baseline.
 
-## Current abstract-feedback delivery
+## Preserved abstract-feedback delivery
 
 - Branch from exact raw revision `fc95a260ddfb2096e561dd9cb99c660b1597e5a7`,
   preserving the raw branch and historical commits. Raw validation is not a gate
@@ -72,12 +72,43 @@ deliberately into the active continuation branch and, where shared, baseline.
   terminate only that task, with null final accuracy and retained prior score.
   Runtime errors remain pending for explicit resume; overflow is terminal.
   No raw fallback, retries, chunking, rollback or change to scoring/stopping rules.
-- `pipeline.offline_batch` runs abstract repair on this branch. README supplies
+- `pipeline.offline_batch` runs abstract repair on the preserved abstract branch. Its README supplies
   commands, response/artifact formats, failure handling and user-run scenarios.
 
-Abstract implementation and source/diff inspection prepare this branch for user
+Abstract implementation and source/diff inspection prepare that snapshot for user
 testing. No pipeline, model, candidate or reference has been executed by the agent;
 behavioural outcomes and runtime compatibility remain empirically pending.
+
+## Current path-feedback delivery
+
+- Branch from exact abstract checkpoint
+  `672b0999ee8792f54e0c03c5a87b6deee913cdb5` after reviewed design. Preserve all prior
+  branches; pending raw/abstract empirical validation does not block this phase.
+- Replace abstraction with every current eligible raw failure plus the latest
+  candidate's ordered one-based source-line trace. Keep stable full-set case IDs,
+  fixed stdin, same-language direct repair and explicit replacement budgets.
+  No abstraction call, passing-case feedback, diagnostics or history in repair.
+- Python uses sys.settrace on unchanged source; C++ uses a separate GNU g++ debug
+  build and Python-enabled GDB, mapping locations back to identical candidate
+  source. Never inspect/trace the reference; score only ordinary executions.
+- GNU/Linux, single process/thread. Detect standard Python creation APIs and GDB
+  thread/fork/exec events. Native-code detection is limited, not full OS isolation.
+  No explicit branch/function events, values or library-source locations.
+- Configurable defaults: 256 retained events, 10 seconds/case including startup,
+  30 seconds/C++ trace build, debugger gdb. Preserve nonempty valid prefixes at
+  timeout/event limit and label incompleteness. Unknown totals remain null.
+  Complete-request overflow is terminal without trimming cases or traces.
+- Collector/build/launch/protocol failure, invalid mapping, unsupported concurrency
+  or empty trace stops only that task: null final accuracy, retained ordinary
+  last_evaluated_summary, saved error and no raw fallback or automatic retry.
+- Keep schema 2 with feedback_mode: path and frozen trace/tool identity. Commit
+  trace requests before collection and completed build/case envelopes before
+  advancing state. Hash artifacts, adopt matching completed publications after
+  crashes and reuse committed cases/evaluations/inference on explicit resume.
+  Trace stages never advance attempted_iteration. Record trace overhead separately.
+- README owns exact start/resume commands, dependencies, defaults, artifacts,
+  failures and user-run validation scenarios. Implementation/source inspection is
+  separate from empirical validation; agents execute no pipeline or collectors.
 
 ## Later phase contracts
 
@@ -87,11 +118,11 @@ round budgets and stopping rules; record abstraction/tracing overhead separately
 Held-out outcomes must never influence filtering, feedback or repair. Shared
 comparison/pool implementation belongs to the later reviewed scope.
 
-Path feedback adds compact normalized traces of the current candidate, with
-Python/C++ collectors, separate trace artifacts, collection errors and truncation
-records. Never inspect
-or instrument the reference. Score only uninstrumented candidate executions.
-Choose tracing mechanisms during path-feedback review.
+The path arm uses raw failures plus compact normalized candidate traces. A future
+classes-plus-traces experiment would measure their combined effect and requires
+separate review. Keep source locations tied to each evaluated candidate; trace
+normalization does not establish equivalent event granularity across languages.
+Never inspect/instrument the reference. Score only uninstrumented executions.
 
 Do not restore rule generation, triage, specification rewriting or indirect
 regeneration. Reference tracing, new languages/interfaces, advanced test

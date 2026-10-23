@@ -1,6 +1,15 @@
-Repair the current candidate program using the specification and behavioural
-failure classes below. The classes describe observed and expected behaviour;
-their case IDs are evidence references only. Raw cases are not supplied.
+Repair the current candidate program using the specification, all supplied raw
+failures and execution traces of this candidate. Case IDs are zero-based positions
+in a fixed stdin set. Trace lines are one-based locations in the current source,
+in observed order, including repetitions. Only candidate source locations are
+recorded; library execution is omitted. A trace is an observation from a separate
+instrumented execution, not proof of a cause or a reference execution path.
+
+Truncated traces are prefixes only. Their completeness and truncation reason are
+explicitly supplied. Do not infer that omitted execution never happened. Python
+line events and C++ debugger locations have different granularity; counts and
+timing are not comparable. Only ordinary executions determine the supplied raw
+outcomes. No reference was traced.
 
 Return one complete replacement program in the same supported language as the
 current candidate. Preserve correct behaviour where possible, but fix the

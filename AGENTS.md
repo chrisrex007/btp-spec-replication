@@ -2,124 +2,112 @@
 
 ## Purpose and phase
 
-This is a research prototype for specification-driven black-box program
-replication. Given a specification, valid stdin description and hidden reference
-executable, synthesize a program with equivalent observable behaviour. Recovering
-source code or reconstructing algorithms is not the goal.
+This research prototype replicates deterministic command-line behaviour from a
+specification, valid stdin description and hidden reference executable. Source
+recovery and algorithm reconstruction are not goals.
 
-The active branch is `experiments/abstract-feedback`, created from raw checkpoint
-`fc95a260ddfb2096e561dd9cb99c660b1597e5a7`. The approved current phase is abstract
-feedback: behavioural classes between evaluation and direct repair, resumable
-abstraction artifacts and documentation. `experiments/raw-feedback` remains its
-independent phase snapshot; raw empirical validation is still pending.
-`experiments/no-feedback` remains a separate one-shot baseline with shared runtime
-fixes and no repair code. Path/trace feedback and comparison require later phase
-review as recorded in `docs/ROADMAP.md`. Comparison/pool work is preserved in Git
-history, not active source.
+The active branch is `experiments/path-feedback`, created from exact abstract
+checkpoint `672b0999ee8792f54e0c03c5a87b6deee913cdb5` after phase review. The approved
+phase is raw failures plus candidate source-line traces in direct repair, with
+resumable trace artifacts and documentation. Preserve `experiments/no-feedback`,
+`experiments/raw-feedback` and `experiments/abstract-feedback` as independent
+snapshots. Raw and abstract empirical validation remain pending. Comparison/pools
+require later review under `docs/ROADMAP.md`; their old source remains in history.
 
 ## Research contract
 
-- Targets are deterministic command-line programs; candidates use Python or
-  C++20, chosen by the initial generation model.
-- A case is one complete UTF-8 stdin string. Compare successful stdout by exact
-  bytes, preserving line endings and invalid UTF-8 through JSON persistence.
-  Stderr is diagnostic only.
+- Candidates are Python or C++20, selected by initial generation. A case is one
+  complete UTF-8 stdin string. Compare successful stdout by exact bytes,
+  preserving line endings and invalid UTF-8 through JSON. Stderr is diagnostic.
 - Launch failure, timeout or nonzero exit is unsuccessful. Any reference failure
-  invalidates the task (`invalid_reference`, `accuracy: null`) and prevents
-  abstraction and repair.
-- The only model-visible task fields are specification and input format. Output
+  invalidates the task (`invalid_reference`, `accuracy: null`) and prevents tracing
+  and repair. Never inspect, instrument or trace the reference.
+- Only specification and input format are model-visible task fields. Output
   behaviour belongs in the specification. Never expose private reference commands
-  or task names in model prompts; never inspect the reference's source.
-- Generate/deduplicate stdin once and reuse it in every round. Include all
-  eligible failures in original input order; no feedback-case cap.
-- Abstraction receives specification + input format + all current eligible raw
-  failures (case ID, input, status, reference stdout, candidate stdout), without
-  candidate source, passing cases, diagnostics or history. Case IDs are zero-based
-  positions in the fixed deduplicated stdin set.
-- Require structured behavioural classes with label, observed/expected behaviour
-  and supporting case IDs. Check structure, IDs and complete coverage; allow
-  overlap and singleton classes without a class cap. Semantic support is for user
-  inspection. Do not add causal hypotheses, repair advice or a second judge call.
-- Repair the latest candidate directly from specification + input format + current
-  candidate + validated classes only. Do not attach raw cases or resolve their
-  IDs into examples. Retain the candidate's language.
-- Require an explicit nonnegative repair budget. Zero evaluates only the initial
-  candidate. Stop on success, exhausted budget, malformed replacement, language
-  change, build failure, invalid reference, unusable abstraction or complete-request
-  context overflow. Abstraction itself does not consume a replacement round.
-- No rollback, best-candidate selection, compiler-diagnostic feedback, implicit
-  inference retries, rewritten specifications, rule generation or triage.
-- Keep attempted and last-evaluated rounds distinct. A failed replacement must
-  not inherit a successful final score from an earlier candidate. Abstraction
-  failures terminate that task with null final accuracy and retain the last
-  evaluated score; other tasks continue. No raw fallback or chunking.
+  or task names in prompts.
+- Generate/deduplicate stdin once and reuse it every round. Include every eligible
+  current failure in original order, with zero-based IDs from the full fixed set.
+- Repair sees specification, input format, latest candidate, all raw failures and
+  their candidate traces. Raw fields are case ID, input, status, reference stdout
+  and ordinary candidate stdout. Exclude passing cases, diagnostics and history.
+  No behavioural abstraction, causal summaries, advice generation or judge calls.
+- Trace every eligible output mismatch, candidate error and candidate timeout
+  only when another replacement is allowed. Score only ordinary uninstrumented
+  executions. Keep identical trace source copies and debug binaries separate.
+- Trace ordered one-based source lines, including repetitions; no explicit
+  function/branch events, values or library locations. Python uses sys.settrace;
+  C++ uses a separate GNU g++ debug build and Python-enabled GDB on GNU/Linux.
+  Normalized format does not imply identical event granularity across languages.
+- Support one process/thread. Detect standard Python thread/process APIs and GDB
+  thread/fork/exec events; detected unsupported execution stops that task. Native
+  code detection is limited; this is not full OS isolation.
+- Configurable defaults: 256 retained events/case, 10 seconds/case including
+  startup, 30 seconds/C++ trace build, debugger `gdb`. A further observed event
+  proves event-limit truncation. Nonempty valid prefixes at limits/timeouts may
+  enter repair, explicitly labelled. Empty/malformed traces or collector failures
+  stop only that task, with null final accuracy and retained prior evaluation.
+  No raw fallback, silent omissions, automatic retries or prompt-driven trimming.
+- Require an explicit nonnegative replacement budget. Zero evaluates round zero
+  only. Preserve language. Stop on success, exhausted budget, malformed or
+  wrong-language replacement, build failure, invalid reference, unusable tracing
+  or complete-request context overflow. Tracing consumes no replacement round.
+- No rollback, best-candidate selection, compiler-diagnostic feedback, rewritten
+  specifications, rule generation or triage. Keep attempted and last-evaluated
+  rounds distinct; failed attempts never inherit an earlier final score.
 
 ## Runtime and persistence
 
-Use direct in-process vLLM `LLM`, `SamplingParams` and
-`StructuredOutputsParams`, with one lazy model per invocation. There is no HTTP
-transport. Require only `BTP_MODEL` in `.env`: a local directory or already cached
-identifier, without a fallback model. Set offline flags before importing model
-libraries; resolve cache entries with `local_files_only=True`. Missing weights
-must fail without download; remote custom code is disabled.
+Use direct in-process vLLM LLM, SamplingParams and StructuredOutputsParams, one
+lazy model per invocation, no HTTP. Require only BTP_MODEL: local directory or
+already cached identifier, no fallback. Set offline flags before library imports;
+resolve with local_files_only=True. Missing weights fail without downloads;
+remote custom code is disabled.
 
-Shared defaults: seed 42, generation/abstraction/repair temperature 0.2, stdin
-temperature 0.6, output limit 4096, context limit 8192, dtype auto, tensor
-parallelism 1.
-No default repair budget. README documents every other CLI option.
-Abstraction preceding repair round i uses seed S + i and the shared output limit
-and model; there are no abstraction-specific runtime options.
+Shared defaults: seed 42, generation/repair temperature 0.2, stdin temperature
+0.6, output limit 4096, context limit 8192, dtype auto, tensor parallelism 1.
+No default repair budget. README documents every CLI option.
 
-Checkpoint schema is 2. Save requests before inference and successful responses
-before advancing state; publish artifacts/state atomically. Hash checkpoint
-artifacts and reject tampering or incompatible/older checkpoints without
-overwriting them. Resume cached successful inference before loading the model.
-Batch only requests with compatible schema and sampling settings.
-Freeze `feedback_mode: abstract` in run identity; raw checkpoints cannot resume
-on this branch. Persist abstraction requests/responses separately under inference
-step `failure_abstraction`, indexed by their evaluated source round. Save raw
-evidence and validated classes separately; abstraction stages must not advance
-`attempted_iteration`. Record abstraction tokens and latency separately from repair.
-Record prompts, schemas, model identity, runtime versions, sampling settings,
-latency, errors and available token counts. Output defaults to ignored `runs/`.
-Exit codes are 0 for normal completion including exhausted budgets, 2 for setup
-or task failures, and 130 for interruption.
-
-Preserve redundant inspection artifacts, private configuration, model caches,
-existing runs and historical commits. Do not remove ordinary runs as cleanup.
+Checkpoint schema remains 2. Freeze feedback_mode: path, source/prompts, trace
+protocol/settings/tool identities, runtime/model and tasks in identity. Reject
+raw/abstract/older/changed checkpoints without overwriting them. Publish requests
+before inference/collection, successful responses before advancing state, and
+atomic checksummed trace envelopes before per-case checkpoint commits. Hash
+source, trace builds, case results, diagnostics, feedback and errors. Reuse
+completed trace artifacts, evaluations and inference on resume; adopt matching
+completed envelopes after publication/state crashes. Incomplete uncommitted work
+may repeat on explicit resume. Tracing stages do not advance attempted_iteration.
+Record trace-build/collection overhead separately from repair tokens/latency.
+Resume successful inference before loading the model; batch only compatible
+schemas and sampling. Record prompts, schemas, identities, settings, versions,
+timing, errors and available token counts. Output defaults to ignored runs/.
+Exit codes: 0 normal completion including exhausted budget, 2 setup/task failure,
+130 interruption. Preserve ordinary runs, inspection artifacts, caches, private
+configuration and history; never remove runs as cleanup.
 
 ## Development rules
 
-Completing the agreed roadmap is the highest priority, one approved phase at a
-time. Ask about material research choices or conflicts across Markdown files;
-continue independent authorized work while awaiting clarification. Do not
-re-ask decisions already settled above.
+Complete the agreed roadmap one approved phase at a time. Ask about material
+research choices or Markdown conflicts; do not re-ask the decisions above.
 
 **The user performs validation.** Agents must not execute the pipeline, load
-models, download weights, compile/run candidates or execute reference programs.
-Do not add or recreate automated harness checks, test directories or bundled
-benchmarks. Source/diff inspection is permitted. Keep exact user-run commands,
-requirements, artifacts, failure handling and later validation scenarios in the
-root `README.md`. Report implementation and empirical validation separately.
-Never fabricate accuracy, performance or experimental results.
+models, download weights, compile/run candidates, execute references or run the
+collectors. Do not add/recreate automated harness checks, test directories or
+bundled benchmarks. Source/diff inspection is permitted. Root README owns exact
+user-run commands, dependencies, artifacts, failure handling and later validation
+scenarios. Separate implementation readiness from empirical validation; never
+fabricate results.
 
-Prefer the standard library, small modules, dataclasses and explicit JSON.
-Remove orphan imports and obsolete comments when deleting source. Do not restore
-removed deployment/scheduler infrastructure. Tracing and comparison/pool
-integration are outside this phase.
+Prefer standard library, small modules, dataclasses and explicit JSON. Remove
+orphan imports/comments when deleting code. Do not restore deployment/scheduler
+infrastructure. Comparison/pool integration is outside this phase. Later four-arm
+comparison must freeze the initial candidate per task/seed and model settings,
+share development/held-out pools and repair budgets/stopping rules, record trace
+and abstraction overhead separately, and keep held-out outcomes out of repair.
 
-For later comparison, all four arms must share a frozen initial candidate per
-task/seed, development and held-out pools and relevant model configuration.
-Repair arms share round budgets/stopping rules; abstraction and tracing overhead
-must be recorded separately. Held-out outcomes must not influence repair.
-Candidate-only tracing is a planned feedback side-channel; never trace the
-reference, and score the uninstrumented candidate.
-
-Generated code is untrusted. Never expose parent secrets to its environment.
-Never read/copy/print private `.env` for documentation; preserve its format of
-one `KEY=VALUE` per line with comments/optional quotes and shell precedence.
-Edit only `.env.example` and documentation. Do not commit `.env`, secrets,
-model weights, ordinary runs, bytecode or temporary build output.
-
-Keep commits focused. Do not merge or push automatically, and never push to
-`main` without an explicit request.
+Generated code is untrusted. Never expose parent secrets; use sanitized candidate
+and collector environments, isolated trace channels and process cleanup. Full OS
+isolation remains future work. Never read/copy/print private .env; preserve its
+KEY=VALUE format and shell precedence. Edit only .env.example and documentation
+for configuration. Do not commit .env, secrets, weights, ordinary runs, bytecode
+or temporary builds. Keep commits focused. Do not merge or push automatically;
+never push to main without an explicit request.

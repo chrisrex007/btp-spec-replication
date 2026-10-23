@@ -1,9 +1,9 @@
-"""Ordered, case-indexed raw evidence for behavioural abstraction."""
+"""Ordered, case-indexed raw evidence for candidate path feedback."""
 
 CANDIDATE_FAILURES = {"output_mismatch", "candidate_timeout", "candidate_error"}
 
 
-def abstraction_feedback(results: list[dict]) -> list[dict]:
+def raw_feedback(results: list[dict]) -> list[dict]:
     """Index the full ordered evaluation, rather than renumbering its failures."""
     feedback = []
     for case_id, item in enumerate(results):
