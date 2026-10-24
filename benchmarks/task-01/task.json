@@ -14,6 +14,6 @@
     ],
     "cwd": "."
   },
-  "input_format": "Exactly one valid JSON value using only null, booleans, bounded integers, strings, arrays, and objects, with the bounds and Unicode restrictions in the specification. No duplicate object property names or floating-point numbers.",
+  "input_format": "Exactly one valid JSON value using only null, booleans, integers, strings, arrays, and objects, with the Unicode restrictions in the specification. No duplicate object property names or floating-point numbers.",
   "timeout_seconds": 3.0
 }

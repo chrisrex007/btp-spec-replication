@@ -13,6 +13,6 @@
     ],
     "cwd": "."
   },
-  "input_format": "One well-formed UTF-8 XML 1.0 document with one root, bounded as in the specification. No DTD, entity declarations, external resources, or invalid namespace bindings. Namespace URIs must be absolute when nonempty.",
+  "input_format": "One well-formed UTF-8 XML 1.0 document with one root. No DTD, entity declarations, external resources, or invalid namespace bindings. Namespace URIs must be absolute when nonempty.",
   "timeout_seconds": 3.0
 }

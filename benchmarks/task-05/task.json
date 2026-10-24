@@ -10,6 +10,6 @@
     ],
     "cwd": "."
   },
-  "input_format": "First line: integers n and t. Second line: n array integers. Next t lines: l r. All constraints and indexing are given in the specification. Each test case is one complete input, not a fragment.",
+  "input_format": "First line: integers n and t. Second line: n array integers. Next t lines: l r. Indexing is given in the specification. Each test case is one complete input, not a fragment.",
   "timeout_seconds": 5.0
 }

@@ -21,7 +21,7 @@ division and remainder `* / %`, and addition/subtraction `+ -`. Unary minus bind
 most tightly, then exponentiation, then `* / %` (left associative), then `+ -`
 (left associative). There is also the function `sqrt(expression)`. Assignment
 occurs only as a complete line, never inside another expression. Every exponent
-is an integer literal from 0 through 8. There are no other operators or functions.
+is a nonnegative integer literal. There are no other operators or functions.
 
 Let S be the current global scale, and let sa and sb be the scales of operands
 a and b. Truncation always discards excess fractional digits toward zero; it
@@ -38,12 +38,10 @@ never rounds to nearest. Apply these rules at each individual operation:
 - sqrt(a) has scale max(S,sa); take the nonnegative square root and truncate it
   to that scale.
 
-A `scale = k` line sets S to the integer literal k, between 0 and 20 inclusive.
-Reading the identifier `scale` as an expression is not allowed. Literals have
-at most 20 integer digits and 10 fractional digits. Each expression has at most
-40 tokens, and each program has at most 40 nonempty lines. All divisors and
-remainder divisors are nonzero; square-root arguments are nonnegative. All
-intermediate results have at most 200 integer digits. Programs always terminate.
+A `scale = k` line sets S to the nonnegative integer literal k.
+Reading the identifier `scale` as an expression is not allowed. All divisors and
+remainder divisors are nonzero; square-root arguments are nonnegative.
+Programs always terminate.
 
 Output formatting uses no exponent notation and never wraps long lines. Any
 numeric zero prints exactly `0`, regardless of its scale. A nonzero result with

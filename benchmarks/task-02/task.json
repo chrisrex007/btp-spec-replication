@@ -12,6 +12,6 @@
     ],
     "cwd": "."
   },
-  "input_format": "A complete finite program of at most 40 nonempty LF-terminated lines. Each line is an expression, single-letter variable assignment, scale assignment, or blank line, using only the grammar and numeric bounds in the specification. All divisors are nonzero and square roots have nonnegative arguments.",
+  "input_format": "A complete finite program of LF-terminated lines. Each line is an expression, single-letter variable assignment, scale assignment, or blank line, using only the grammar in the specification. All divisors are nonzero and square roots have nonnegative arguments.",
   "timeout_seconds": 3.0
 }

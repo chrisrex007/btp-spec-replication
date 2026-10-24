@@ -11,8 +11,8 @@ An operation `2 l r` requests the sum of a[l] through a[r], inclusive, modulo
 is always the representative from 0 through 1000000008. Values may be maintained
 modulo that modulus because only these sums are observable.
 
-Constraints: 1 <= n,m <= 300000; initially 1 <= a[i] <= 1000000000;
-1 <= l <= r <= n for every operation. The first line contains n and m;
+Each operation identifies a nonempty interval within the array.
+The first line contains n and m;
 the second contains n array values; each subsequent line is one operation.
 All tokens are base-ten integers separated by ASCII whitespace.
 

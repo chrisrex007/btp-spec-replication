@@ -42,8 +42,7 @@ For each such node preceding the root, output the node followed by LF; for each
 such node following the root, output LF followed by the node. Discard whitespace
 outside the document element.
 
-Input contains one root element, at most 100 elements, depth at most 12, at most
-15 attributes per element, and at most 8000 UTF-8 bytes. Names and prefixes are
+Input contains one root element. Names and prefixes are
 ASCII XML names. Each nonempty namespace URI is an absolute URI. Namespace
 bindings obey XML Namespaces 1.0; duplicate expanded attribute names are forbidden.
 No DTD, entity declarations, external entities, XInclude processing, network

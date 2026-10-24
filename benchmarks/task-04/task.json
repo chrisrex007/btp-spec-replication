@@ -13,6 +13,6 @@
     ],
     "cwd": "."
   },
-  "input_format": "A complete ASCII paragraph-only markup document of at most 8000 bytes. Paragraphs are separated by empty LF lines; nonempty lines have no leading spaces. Only the inline constructs and input restrictions in the specification are allowed; no headings, lists, HTML blocks, images, autolinks, or reference definitions.",
+  "input_format": "A complete ASCII paragraph-only markup document. Paragraphs are separated by empty LF lines; nonempty lines have no leading spaces. Only the inline constructs and input restrictions in the specification are allowed; no headings, lists, HTML blocks, images, autolinks, or reference definitions.",
   "timeout_seconds": 3.0
 }

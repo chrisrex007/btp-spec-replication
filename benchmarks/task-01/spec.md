@@ -30,7 +30,4 @@ integers in ordinary base-ten notation without leading zeros, decimal points, or
 zero is 0. Write JSON booleans and null in lowercase. Produce no other stdout.
 
 The input has unique property names within each object, no surrogate code points,
-and no floating-point numbers or negative-zero literal (`-0`). Every integer
-lies between -1000000000 and 1000000000 inclusive. Nesting depth is at most 12, each container has at most 30
-entries, each string has at most 100 Unicode characters, and the entire input is
-at most 8000 UTF-8 bytes. Any permitted JSON whitespace may surround the value.
+and no floating-point numbers or negative-zero literal (`-0`). Any permitted JSON whitespace may surround the value.

@@ -9,9 +9,9 @@ order, with 1-based indices:
   is the nonnegative remainder, between 0 and x-1.
 - `3 k x`: replace a[k] with x.
 
-Updates affect subsequent operations. Constraints: 1 <= n,m <= 100000;
-initially 1 <= a[i] <= 1000000000; 1 <= l <= r <= n; 1 <= k <= n;
-1 <= x <= 1000000000. Updated array entries may equal zero. The first line
+Updates affect subsequent operations. Intervals are nonempty and lie within
+the array; point assignments use a valid array index. The value x is a positive
+integer. Updated array entries may equal zero. The first line
 contains n and m; the second contains n array values; the next m lines each
 contain one operation in the indicated format. All tokens are base-ten integers
 separated by ASCII whitespace.

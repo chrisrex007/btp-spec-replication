@@ -1,7 +1,7 @@
 # Paragraph markup to HTML
 
 Convert a complete paragraph-only markup document from stdin into HTML. Input
-uses ASCII printable characters and LF, with at most 8000 bytes. Empty lines
+uses ASCII printable characters and LF. Empty lines
 separate paragraphs; ignore empty lines at the beginning or end and collapse
 multiple empty separator lines. Each nonempty line starts with a non-space
 character. The allowed block structure consists only of paragraphs: inputs do
@@ -102,5 +102,4 @@ another link. Render a valid link as `<a href="URL">LABEL</a>` or
 like ordinary HTML text. For URL rendering retain ASCII alphanumerics and
 `-_.+!*(),%#@?=;:/+$~`; render & as &amp; and apostrophe as &#x27;; percent-encode
 other bytes with uppercase hexadecimal. Unmatched or otherwise non-link bracket
-and parenthesis characters are literal. There are at most 20 paragraphs and no
-more than 8 nested inline constructs. Produce only the HTML bytes described.
+and parenthesis characters are literal. Produce only the HTML bytes described.

@@ -10,6 +10,6 @@
     ],
     "cwd": "."
   },
-  "input_format": "First line: n m. Second line: n array integers. Next m lines: either 1 l r or 2 l r. All indices and bounds must satisfy the specification. Each test case is one complete input.",
+  "input_format": "First line: n m. Second line: n array integers. Next m lines: either 1 l r or 2 l r. All indices must identify valid array intervals. Each test case is one complete input.",
   "timeout_seconds": 6.0
 }

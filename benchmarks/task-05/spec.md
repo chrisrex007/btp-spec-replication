@@ -6,8 +6,8 @@ inclusive subarray a[l],...,a[r]. The answer is the sum of K_s*K_s*s over all
 distinct integers occurring in that subarray. Answer every query independently;
 the array does not change.
 
-Constraints: 1 <= n,t <= 200000, 1 <= a[i] <= 1000000, and
-1 <= l <= r <= n. All tokens are base-ten integers separated by ASCII whitespace.
+Each query identifies a nonempty interval within the array.
+All tokens are base-ten integers separated by ASCII whitespace.
 The first line contains n and t; the second contains the n array values; the
 next t lines each contain l and r. Indexing starts at 1.
 
