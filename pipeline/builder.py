@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import uuid
 
-from .artifacts import CapturedText
+from .artifacts import CapturedText, atomic_bytes
 from .candidate import CandidateSource
 from .execution import run_program
 
@@ -108,6 +108,20 @@ def build_candidate(
             exit_code=result.exit_code,
             timed_out=result.timed_out,
             error=result.launch_error,
+        )
+
+    try:
+        temporary_executable.replace(executable_path)
+    except OSError as exc:
+        return BuildResult(
+            success=False,
+            language=candidate.language,
+            source_path=str(source_path),
+            run_command=None,
+            build_stdout=result.stdout,
+            build_stderr=result.stderr,
+            exit_code=result.exit_code,
+            error=f"Could not publish compiled executable: {type(exc).__name__}: {exc}",
         )
 
     return BuildResult(

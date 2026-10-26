@@ -81,7 +81,7 @@ def generate_tests(
     target: str,
     seed: int = 42,
     temperature: float = 0.6,
-    max_tokens: int = 4096,
+    max_tokens: int = 24000,
     call_fn: Callable[..., str] = logged_call,
 ) -> list[str]:
     """Generate complete stdin payloads and remove exact duplicates."""
@@ -99,23 +99,10 @@ def generate_tests(
         iteration=0,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
-        temperature=0.6,
-        max_tokens=24000,
+        temperature=temperature,
+        max_tokens=max_tokens,
         seed=seed,
         json_schema=schema,
         schema_name="test_inputs",
     )
-    data = json.loads(raw)
-    tests = data["tests"]
-    if not isinstance(tests, list) or len(tests) != count:
-        raise ValueError("LLM test response must contain the requested number of tests")
-    if not all(isinstance(item, str) for item in tests):
-        raise ValueError("LLM test response contains a non-string testcase")
-
-    for item in tests:
-        item.encode("utf-8")
-
-    unique = _deduplicate_preserving_order(tests)
-    if not unique:
-        raise ValueError("LLM produced no usable testcases")
-    return unique
+    return parse_tests_response(raw, expected_count=count)

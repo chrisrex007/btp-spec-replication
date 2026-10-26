@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from importlib import metadata
 import json
 import os
@@ -11,8 +12,6 @@ import sys
 
 from .env import load_dotenv
 
-
-load_dotenv()
 
 ENGINE_SETTINGS = {
     "dtype": "bfloat16",
@@ -35,8 +34,6 @@ SAMPLING_SETTINGS = {
     "top_k": -1,
     "repetition_penalty": 1.0,
 }
-_engine = None
-_engine_model_path: Path | None = None
 
 
 def get_model() -> str:
@@ -44,9 +41,9 @@ def get_model() -> str:
     return os.environ.get("BTP_MODEL", "").strip()
 
 
-def resolve_model_path() -> Path:
+def resolve_model_path(name: str | None = None) -> Path:
     """Reject remote IDs, traversal, escaped symlinks, and incomplete checkpoints."""
-    name = get_model()
+    name = get_model() if name is None else name
     if not name:
         raise ValueError(
             "BTP_MODEL is required; set it to a directory name under ~/models"
@@ -96,98 +93,108 @@ def inference_metadata() -> dict:
         "backend": "vllm_offline",
         "model_path": None,
         "runtime_versions": versions,
-        "engine_settings": dict(ENGINE_SETTINGS),
+        "engine_settings": deepcopy(ENGINE_SETTINGS),
         "sampling_settings": dict(SAMPLING_SETTINGS),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
     }
 
 
-def _get_engine():
-    global _engine, _engine_model_path
-    model_path = resolve_model_path()
-    if _engine is not None:
-        if model_path != _engine_model_path:
-            raise RuntimeError("BTP_MODEL cannot change after the local model has loaded")
-        return _engine
+class InferenceSession:
+    """One invocation's configuration and lazy engine, shared by its two calls."""
 
-    # Set these before importing vLLM/Transformers/Hugging Face libraries.
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    os.environ["TRANSFORMERS_OFFLINE"] = "1"
-    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-    os.environ["VLLM_NO_USAGE_STATS"] = "1"
-    os.environ["VLLM_DO_NOT_TRACK"] = "1"
-    try:
-        from vllm import LLM
-    except ImportError as exc:
-        raise RuntimeError(
-            "Offline inference requires the documented Python 3.12 vLLM "
-            f"environment: {exc}"
-        ) from exc
+    def __init__(self) -> None:
+        load_dotenv()
+        self.model = get_model()
+        self._model_path: Path | None = None
+        self._engine = None
 
-    _engine = LLM(model=str(model_path), tokenizer=str(model_path), **ENGINE_SETTINGS)
-    _engine_model_path = model_path
-    return _engine
+    def resolve_model_path(self) -> Path:
+        if self._model_path is None:
+            self._model_path = resolve_model_path(self.model)
+        return self._model_path
 
+    def _get_engine(self):
+        if self._engine is not None:
+            return self._engine
+        model_path = self.resolve_model_path()
 
-def call(
-    system_prompt: str,
-    user_prompt: str,
-    temperature: float = 0.2,
-    max_tokens: int = 4096,
-    seed: int = 42,
-    json_schema: dict | None = None,
-    schema_name: str = "response",
-    *,
-    completion_metadata: dict | None = None,
-) -> str:
-    """Generate once locally, using the checkpoint's chat template and JSON schema.
+        # Set these before importing vLLM/Transformers/Hugging Face libraries.
+        for name in (
+            "HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY",
+            "VLLM_NO_USAGE_STATS", "VLLM_DO_NOT_TRACK",
+        ):
+            os.environ[name] = "1"
+        try:
+            from vllm import LLM
+        except ImportError as exc:
+            raise RuntimeError(
+                "Offline inference requires the documented Python 3.12 vLLM "
+                f"environment: {exc}"
+            ) from exc
 
-    schema_name remains part of the caller/logging interface; vLLM accepts the
-    schema itself. Optional completion_metadata receives termination and token
-    counts without changing the string return value. Truncated text is returned
-    intact for logging and parsing. There are no inference retries or fallbacks.
-    """
-    if completion_metadata is not None:
-        completion_metadata.clear()
-    engine = _get_engine()
-    from vllm import SamplingParams
-    from vllm.sampling_params import StructuredOutputsParams
-
-    sampling = SamplingParams(
-        temperature=temperature,
-        max_tokens=max_tokens,
-        seed=seed,
-        structured_outputs=(
-            None if json_schema is None else StructuredOutputsParams(json=json_schema)
-        ),
-        **SAMPLING_SETTINGS,
-    )
-    outputs = engine.chat(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        sampling_params=sampling,
-        use_tqdm=False,
-    )
-    if len(outputs) != 1 or len(outputs[0].outputs) != 1:
-        raise RuntimeError("Local inference did not return exactly one completion")
-    request = outputs[0]
-    completion = request.outputs[0]
-    if completion_metadata is not None:
-        prompt_tokens = (
-            None if request.prompt_token_ids is None else len(request.prompt_token_ids)
+        self._engine = LLM(
+            model=str(model_path), tokenizer=str(model_path), **deepcopy(ENGINE_SETTINGS)
         )
-        completion_tokens = len(completion.token_ids)
-        completion_metadata.update({
-            "finish_reason": completion.finish_reason,
-            "stop_reason": completion.stop_reason,
-            "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": (
-                    None if prompt_tokens is None else prompt_tokens + completion_tokens
-                ),
-            },
-        })
-    return completion.text
+        return self._engine
+
+    def call(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.2,
+        max_tokens: int = 8192,
+        seed: int = 42,
+        json_schema: dict | None = None,
+        schema_name: str = "response",
+        *,
+        completion_metadata: dict | None = None,
+    ) -> str:
+        """Generate once with the chat template and schema; never retry or fall back.
+
+        schema_name is retained for logging. Truncated text and token counts are
+        returned intact so the caller can persist them before failing the stage.
+        """
+        if completion_metadata is not None:
+            completion_metadata.clear()
+        engine = self._get_engine()
+        from vllm import SamplingParams
+        from vllm.sampling_params import StructuredOutputsParams
+
+        sampling = SamplingParams(
+            temperature=temperature,
+            max_tokens=max_tokens,
+            seed=seed,
+            structured_outputs=(
+                None if json_schema is None else StructuredOutputsParams(json=json_schema)
+            ),
+            **SAMPLING_SETTINGS,
+        )
+        outputs = engine.chat(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            sampling_params=sampling,
+            use_tqdm=False,
+        )
+        if len(outputs) != 1 or len(outputs[0].outputs) != 1:
+            raise RuntimeError("Local inference did not return exactly one completion")
+        request = outputs[0]
+        completion = request.outputs[0]
+        if completion_metadata is not None:
+            prompt_tokens = (
+                None if request.prompt_token_ids is None else len(request.prompt_token_ids)
+            )
+            completion_tokens = len(completion.token_ids)
+            completion_metadata.update({
+                "finish_reason": completion.finish_reason,
+                "stop_reason": completion.stop_reason,
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": (
+                        None if prompt_tokens is None else prompt_tokens + completion_tokens
+                    ),
+                },
+            })
+        return completion.text

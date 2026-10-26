@@ -57,7 +57,7 @@ def generate_candidate(
     target: str,
     seed: int = 42,
     temperature: float = 0.2,
-    max_tokens: int = 4096,
+    max_tokens: int = 8192,
     call_fn: Callable[..., str] = logged_call,
 ) -> CandidateSource:
     """Generate one Python or C++ stdin/stdout candidate."""

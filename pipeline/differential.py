@@ -9,7 +9,6 @@ from typing import Callable, Iterable, Sequence
 
 from .artifacts import outputs_equal, write_json
 from .execution import ExecutionResult, run_program
-from .artifacts import atomic_json
 
 
 class ComparisonStatus(str, Enum):

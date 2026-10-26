@@ -43,7 +43,9 @@ whitespace loops between elements. Contents of string values, including stdin
 spaces and escaped newlines, remain unchanged. This decoding setting differs
 from the earlier failed runs and is recorded in inference metadata; it does not
 guarantee completion or candidate correctness. Sampling defaults are explicit, rather than inherited from the
-checkpoint's generation configuration. Both logical calls reuse the engine.
+checkpoint's generation configuration. Both logical calls reuse one
+invocation-owned session and engine; separate invocations have separate sessions.
+Repository-root `.env` is loaded explicitly during session setup, not at import.
 Initialization is included in the first call's latency. There are no inference
 retries or fallback models. Fixed seeds do not guarantee bitwise reproducibility
 across different GPU/library configurations.
@@ -173,6 +175,10 @@ infrastructure failures and accidental reruns; identify the intended baseline
 run explicitly in any report. Do not pick the best seed or repeat until a
 preferred score appears.
 
+The CLI accepts `task_config`, `--tests`, `--run-root`, `--run-id`, and `--seed`.
+Model and engine settings follow the contract above; there is no separate generic
+runtime-configuration CLI.
+
 User validation should confirm that both response schemas work, records retain
 successful/failed logical calls, candidates remain unchanged, and artifact
 files contain the exact evaluated inputs and outputs. Check that generated
@@ -201,9 +207,19 @@ cases where both fail. The execution counts include a partially evaluated case;
 `n_total`, `n_valid`, and comparison status counts describe completed pairs.
 An unexpected execution or persistence exception produces `execution_failed`
 with null accuracy, unless a reference failure already requires
-`invalid_reference`. Previously saved cases and per-program records remain. A `completed` run does not imply all
-candidate cases passed. Scores measure agreement on generated cases, not proven
-behavioral equivalence.
+`invalid_reference`. Generation and build errors retain their stage-specific
+failure statuses. Caught exceptions include `failed_stage` and the original error;
+earlier artifacts and temporary files remain available.
+
+An interruption saves available counts and completed results with null accuracy,
+`interrupted: true`, and `interrupted_stage`. Its status is `interrupted` unless
+an observed reference failure requires `invalid_reference`. The CLI returns 130
+for either interrupted outcome; normal completion returns 0 and other failures
+return 2. Recovery writes artifacts only and never repeats inference or execution.
+If saving the summary also fails, stderr reports that separate persistence error
+and the CLI prints the available summary with null accuracy. A `completed` run
+does not imply all candidate cases passed. Scores measure agreement on generated
+cases, not proven behavioral equivalence.
 
 ## Artifacts and execution boundary
 
@@ -228,6 +244,7 @@ tests.json
 results.json
 failures.json
 summary.json
+llm_requests.jsonl
 llm_log.jsonl
 ```
 
@@ -250,7 +267,15 @@ atomically replaced after each case. ASCII-escaped JSON preserves undecodable by
 JSON, recover stdout using `stored_stdout.encode("utf-8", "surrogateescape")`.
 No comparison value uses replacement decoding or whitespace normalization.
 
-`llm_log.jsonl` retains prompts, configured model, schema/name, seed, temperature,
+`llm_requests.jsonl` appends and flushes a pending request before model resolution,
+initialization, or inference. Each request includes a unique `request_id`, prompts,
+configured model, schema/name, seed, temperature, token limit, and available
+runtime metadata. Its resolved model path is null until resolution. A request
+without a matching terminal record indicates an unfinished call or a terminal-log
+persistence failure; it is not evidence of a successful call.
+
+`llm_log.jsonl` correlates terminal records by `request_id` and retains prompts,
+configured model, schema/name, seed, temperature,
 token limit, response/error, and latency. Its `inference` object identifies
 `vllm_offline`, the resolved model path, Python/vLLM/PyTorch/Transformers/XGrammar
 versions, engine and sampling settings, and visible CUDA devices. Missing-model
@@ -264,7 +289,21 @@ prompt token count and its total are null rather than estimated. A finish reason
 of `length` identifies a length-limited completion and fails the generation stage
 with an explicit token-limit diagnostic after saving the raw response. The logical-call `status`
 describes whether inference returned text; the run summary records later parsing,
-build, or execution failures. Raw completion text is retained even if parsing fails.
+build, or execution failures. A caught `KeyboardInterrupt` produces an
+`interrupted` terminal record before propagation when persistence is available.
+Raw completion text is retained even if parsing fails. If error logging also
+fails, stderr reports the logging failure and original error separately.
+
+User-managed acceptance should cover both candidate languages (including the
+published C++ executable path), engine reuse within a run, and independent
+sessions across invocations. Inspect request/terminal correlation for missing
+models, initialization errors, malformed or length-limited responses, and
+interruptions. Check that test parsing rejects extra fields, wrong counts, and
+non-UTF-8-encodable strings while retaining empty stdin and first-occurrence
+deduplication. Check byte-exact LF/CRLF and invalid-byte output recovery, candidate
+launch/exit/timeout failures, and reference-failure precedence after interrupted
+or failed persistence. These are user-run acceptance scenarios, not automated
+harness checks or claimed results.
 
 Generated candidates receive a sanitized environment instead of parent secrets.
 This is not a full OS sandbox: code still executes on the host. Keep source,

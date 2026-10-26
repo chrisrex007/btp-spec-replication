@@ -5,6 +5,21 @@ import json
 from pathlib import Path
 
 
+class ArtifactPersistenceError(RuntimeError):
+    """Artifact creation or publication failed."""
+
+
+def atomic_bytes(path: Path, payload: bytes) -> None:
+    """Publish complete bytes without text encoding or newline translation."""
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        with temporary.open("wb") as handle:
+            handle.write(payload)
+        temporary.replace(path)
+    except Exception as exc:
+        raise ArtifactPersistenceError(f"Could not persist {path}: {exc}") from exc
+
+
 @dataclass(frozen=True)
 class CapturedText:
     path: Path
@@ -53,7 +68,10 @@ def _write_value(handle, value):
 def write_json(path: Path, value) -> None:
     """Replace a JSON artifact only after its complete contents have been written."""
     temporary = path.with_name(path.name + ".tmp")
-    with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-        _write_value(handle, value)
-        handle.write("\n")
-    temporary.replace(path)
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            _write_value(handle, value)
+            handle.write("\n")
+        temporary.replace(path)
+    except Exception as exc:
+        raise ArtifactPersistenceError(f"Could not persist {path}: {exc}") from exc
