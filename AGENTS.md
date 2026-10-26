@@ -51,6 +51,10 @@ Existing shell values take precedence. Only `BTP_MODEL` is required; it names a
 local directory or an already cached model identifier. No server, credentials,
 or downloads are used. Resolve files locally before creating one invocation-owned,
 lazy vLLM engine. `.env.example` contains a placeholder only.
+Existing shell values take precedence. The client requires only `BTP_MODEL`, a
+single local checkpoint directory name beneath `~/models`. Use direct offline
+vLLM inference; do not restore HTTP endpoints, API keys, attribution headers,
+remote model downloads, or model fallback. `.env.example` contains a placeholder.
 
 Never read, print, copy, or commit private `.env` values merely to document its
 format. Deployment infrastructure, scheduler details, and specific hardware or
@@ -64,6 +68,9 @@ LLM records; do not remove artifacts aggressively.
 
 LLM records must retain prompts, local model identity, runtime versions, seed, temperature,
 token limit, response schema and schema name, response or error, and latency.
+LLM records must retain prompts, model, resolved local model path, offline backend,
+runtime versions, inference settings, seed, temperature, token limit, response
+schema and schema name, response or error, and latency.
 Preserve failed logical calls as well as successful calls. Never log credentials.
 
 Subprocess output uses lossless UTF-8 `surrogateescape` decoding internally.

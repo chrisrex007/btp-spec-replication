@@ -1,0 +1,18 @@
+{
+  "name": "task-03",
+  "specification": "spec.md",
+  "reference": {
+    "command": [
+      "/usr/bin/env",
+      "-i",
+      "LC_ALL=C.UTF-8",
+      "/usr/bin/xmllint",
+      "--nonet",
+      "--c14n",
+      "-"
+    ],
+    "cwd": "."
+  },
+  "input_format": "One well-formed UTF-8 XML 1.0 document with one root, bounded as in the specification. No DTD, entity declarations, external resources, or invalid namespace bindings. Namespace URIs must be absolute when nonempty.",
+  "timeout_seconds": 3.0
+}

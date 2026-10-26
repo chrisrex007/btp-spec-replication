@@ -1,28 +1,55 @@
-"""Provenance for local inference requests, responses and failures."""
-from dataclasses import asdict
+"""JSONL logging for every LLM invocation."""
 
-from .artifacts import append_jsonl, digest, utc_now
-from .offline_runtime import InferenceOutput, InferenceRequest
+from __future__ import annotations
 
-
-def request_record(request: InferenceRequest, runtime: dict) -> dict:
-    identity = {"request": asdict(request), "runtime": runtime}
-    return {"schema_version": 2, **identity, "fingerprint": digest(identity)}
+from datetime import datetime, timezone
+import json
+from pathlib import Path
 
 
-def response_record(request: dict, output: InferenceOutput | None, *,
-                    error: Exception | None = None, latency_s: float = 0.0,
-                    batch_id: str | None = None, batch_size: int = 1) -> dict:
-    payload = {
-        "schema_version": 2, "request_fingerprint": request["fingerprint"],
-        "timestamp": utc_now(), "status": "error" if error is not None else "success",
-        "output": asdict(output) if output is not None else None,
-        "error": {"type": type(error).__name__, "message": str(error)} if error is not None else None,
-        "error_prompt_tokens": getattr(error, "prompt_tokens", None),
-        "latency_s": latency_s, "batch_id": batch_id, "batch_size": batch_size,
+def log_call(
+    run_dir: Path,
+    step: str,
+    target: str,
+    iteration,
+    model: str,
+    seed,
+    temperature,
+    max_tokens,
+    system_prompt: str,
+    user_prompt: str,
+    response: str | None,
+    latency_s: float,
+    *,
+    inference_metadata: dict,
+    json_schema: dict | None,
+    schema_name: str,
+    error: dict | None = None,
+    completion_metadata: dict | None = None,
+) -> None:
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "target": target,
+        "iteration": iteration,
+        "step": step,
+        "model": model,
+        "inference": inference_metadata,
+        "seed": seed,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
+        "json_schema": json_schema,
+        "schema_name": schema_name,
+        "status": "error" if error is not None else "success",
+        "response": response,
+        "completion": completion_metadata,
+        "error": error,
+        "latency_s": latency_s,
     }
-    return {**payload, "content_sha256": digest(payload)}
 
-
-def log_call(path, request: dict, response: dict) -> None:
-    append_jsonl(path, {"request": request, "response": response})
+    run_path = Path(run_dir)
+    run_path.mkdir(parents=True, exist_ok=True)
+    log_path = run_path / "llm_log.jsonl"
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=True) + "\n")

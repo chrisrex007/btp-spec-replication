@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import uuid
 
-from .artifacts import atomic_bytes
+from .artifacts import CapturedText
 from .candidate import CandidateSource
 from .execution import run_program
 
@@ -19,8 +19,8 @@ class BuildResult:
     language: str
     source_path: str
     run_command: tuple[str, ...] | None
-    build_stdout: str = ""
-    build_stderr: str = ""
+    build_stdout: str | CapturedText = ""
+    build_stderr: str | CapturedText = ""
     exit_code: int | None = None
     timed_out: bool = False
     error: str | None = None
@@ -90,16 +90,12 @@ def build_candidate(
         "-o",
         str(temporary_executable),
     )
-    try:
-        result = run_program(
-            compile_command,
-            "",
-            timeout_seconds=compile_timeout_seconds,
-        )
-        if result.succeeded:
-            os.replace(temporary_executable, executable_path)
-    finally:
-        temporary_executable.unlink(missing_ok=True)
+    result = run_program(
+        compile_command,
+        "",
+        timeout_seconds=compile_timeout_seconds,
+        output_dir=out_dir / "build-output",
+    )
 
     if not result.succeeded:
         return BuildResult(

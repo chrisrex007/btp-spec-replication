@@ -1,68 +1,59 @@
-"""Lossless, atomic JSON artifacts and content identities."""
-from __future__ import annotations
+"""Lossless, bounded-memory JSON persistence for captured process output."""
 
-from datetime import datetime, timezone
-import hashlib
+from dataclasses import dataclass
 import json
-import os
 from pathlib import Path
-import uuid
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+@dataclass(frozen=True)
+class CapturedText:
+    path: Path
+
+    def chunks(self):
+        with self.path.open("r", encoding="utf-8", errors="surrogateescape", newline="") as handle:
+            while chunk := handle.read(65536):
+                yield chunk
 
 
-def json_text(value: object) -> str:
-    return json.dumps(value, ensure_ascii=True, indent=2, allow_nan=False) + "\n"
+def outputs_equal(left: CapturedText, right: CapturedText) -> bool:
+    with left.path.open("rb") as a, right.path.open("rb") as b:
+        while True:
+            x, y = a.read(65536), b.read(65536)
+            if x != y:
+                return False
+            if not x:
+                return True
 
 
-def atomic_json(path: str | Path, value: object) -> None:
-    atomic_bytes(path, json_text(value).encode("utf-8"))
+def _write_value(handle, value):
+    if isinstance(value, CapturedText):
+        handle.write('"')
+        for chunk in value.chunks():
+            handle.write(json.dumps(chunk, ensure_ascii=True)[1:-1])
+        handle.write('"')
+    elif isinstance(value, dict):
+        handle.write("{")
+        for index, (key, item) in enumerate(value.items()):
+            if index:
+                handle.write(",")
+            handle.write(json.dumps(key, ensure_ascii=True) + ":")
+            _write_value(handle, item)
+        handle.write("}")
+    elif isinstance(value, (list, tuple)):
+        handle.write("[")
+        for index, item in enumerate(value):
+            if index:
+                handle.write(",")
+            _write_value(handle, item)
+        handle.write("]")
+    else:
+        handle.write(json.dumps(value, ensure_ascii=True))
 
 
-def atomic_bytes(path: str | Path, value: bytes) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
-    try:
-        with temporary.open("wb") as handle:
-            handle.write(value)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def read_json(path: str | Path):
-    return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
-def append_jsonl(path: str | Path, value: object) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(json.dumps(value, ensure_ascii=True, allow_nan=False) + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-
-
-def digest(value: object) -> str:
-    data = json.dumps(value, ensure_ascii=True, sort_keys=True,
-                      separators=(",", ":"), allow_nan=False).encode("ascii")
-    return hashlib.sha256(data).hexdigest()
-
-
-def file_digest(path: str | Path) -> str:
-    result = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            result.update(block)
-    return result.hexdigest()
-
-
-def implementation_digest() -> str:
-    root = Path(__file__).parent
-    return digest({p.relative_to(root).as_posix(): file_digest(p)
-                   for p in sorted(root.rglob("*")) if p.suffix in {".py", ".txt"}})
+def write_json(path: Path, value) -> None:
+    """Replace a JSON artifact only after its complete contents have been written."""
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+        _write_value(handle, value)
+        handle.write("\n")
+    temporary.replace(path)

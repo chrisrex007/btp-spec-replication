@@ -1,0 +1,15 @@
+{
+  "name": "task-06",
+  "specification": "spec.md",
+  "reference": {
+    "command": [
+      "/usr/bin/env",
+      "-i",
+      "LC_ALL=C.UTF-8",
+      "../../runs/reference-build/task-06"
+    ],
+    "cwd": "."
+  },
+  "input_format": "First line: n m. Second line: n array integers. Next m lines: either 1 l r or 2 l r. All indices and bounds must satisfy the specification. Each test case is one complete input.",
+  "timeout_seconds": 6.0
+}

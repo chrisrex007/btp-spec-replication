@@ -1,0 +1,32 @@
+{
+  "software": "Codeforces 446C / DZY Loves Fibonacci Numbers",
+  "version": null,
+  "source_url": "https://codeforces.com/problemset/problem/446/C",
+  "group": "algorithmic",
+  "specification_sha256": "4bca61c858ec009ad019a6b6c00ad07d4d4cf60e3b6a12801ce8f11e87a88263",
+  "task_config_sha256": "c5dbb10fdb47721f5334ba8bc01df6331133cdced8db8aa2ea5a5b7f03aa9954",
+  "validation": "Not executed by agent; behavioral validation is user-managed.",
+  "dataset": "deepmind/code_contests",
+  "dataset_revision": "802411c3010cb00d1b05bad57ca77365a3c699d6",
+  "dataset_url": "https://huggingface.co/datasets/deepmind/code_contests",
+  "dataset_license": "CC-BY-4.0",
+  "reference_status": "built; not executed",
+  "dataset_split": "train",
+  "dataset_record_name": "446_C. DZY Loves Fibonacci Numbers",
+  "dataset_shard": "data/train-00015-of-00039-19ccd7331d695677.parquet",
+  "dataset_row_in_shard": 330,
+  "solution_index": 1,
+  "solution_language": "CPP",
+  "reference_source": "reference.cpp",
+  "reference_source_sha256": "ef44564ee3327e64f1f7d09aee4446cadc63f44105fa944a88006478dfd62101",
+  "selection_note": "Static portability review before evaluation: selected an accepted stdin/stdout solution with conventional integer-per-line output and no platform-specific %I64d formatting; no observed baseline results were used.",
+  "dataset_shard_sha256": "130ef71583565d5b2887a186cb0c64578486f1c7dfdff4bcb9c1107f807b0768",
+  "built_reference": "../../runs/reference-build/task-06",
+  "built_reference_sha256": "a4cde4c9b6449f5766bc43e061b7389f2f8d36efdf1e153ba01258bf3a82395f",
+  "compiler": "g++ (GCC) 11.5.0 20240719 (Red Hat 11.5.0-14)",
+  "build_diagnostics": "../../runs/reference-build/task-06.build.log",
+  "build_flags": [
+    "-O2",
+    "-std=c++20"
+  ]
+}
