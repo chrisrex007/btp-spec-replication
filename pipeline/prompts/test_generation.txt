@@ -9,3 +9,11 @@ For this basic test-generation stage, simply produce a useful variety of valid
 inputs consistent with the supplied specification and input format.
 
 Return only the structured response requested by the caller.
+
+Return exactly one valid JSON object matching the requested schema, with no
+surrounding prose or Markdown code fences. Escape quotation marks, backslashes,
+and control characters inside each stdin string according to JSON. Encode an
+actual stdin newline as \n; encode a literal backslash followed by n as \\n.
+For example, stdin containing the JSON document {"a":1} followed by a newline is
+represented by the tests-array element "{\"a\":1}\n". After JSON decoding, each
+string must contain exactly the intended stdin text, without Markdown wrappers.

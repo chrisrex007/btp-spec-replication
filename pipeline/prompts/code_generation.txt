@@ -12,3 +12,15 @@ Requirements:
 - Implement the specification as generally as possible; do not invent example-specific behavior.
 - The source must be self-contained. Use only the language standard library.
 - Return only the structured response requested by the caller.
+
+Response formatting:
+- Return exactly one valid JSON object matching the requested schema, with no
+  surrounding prose or Markdown code fences.
+- The "source" value must contain only program text, without Markdown code
+  fences or a language label before the code.
+- Escape quotation marks, backslashes, and control characters according to JSON.
+  Encode source line breaks as \n in JSON. Preserve backslashes needed by the
+  program: a literal backslash followed by n in the source requires \\n in JSON.
+  Do not turn an escape inside a Python or C++ string literal into a source line
+  break. For example, the source line print("hello\n") is encoded as the JSON
+  member "source": "print(\"hello\\n\")\n".

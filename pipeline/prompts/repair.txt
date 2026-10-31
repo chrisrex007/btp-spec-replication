@@ -5,3 +5,16 @@ Return one complete replacement program in the same supported language as the
 current candidate. Preserve correct behaviour where possible, but fix the
 observed mismatches and execution errors. Do not print debugging output.
 Return only the structured response requested by the caller.
+
+Response formatting:
+- Return exactly one valid JSON object matching the requested schema, with no
+  surrounding prose or Markdown code fences.
+- The "source" value must contain only program text, without Markdown code
+  fences or a language label before the code. The code fences delimiting the
+  current candidate in the input are not part of the replacement source.
+- Escape quotation marks, backslashes, and control characters according to JSON.
+  Encode source line breaks as \n in JSON. Preserve backslashes needed by the
+  program: a literal backslash followed by n in the source requires \\n in JSON.
+  Do not turn an escape inside a Python or C++ string literal into a source line
+  break. For example, the source line print("hello\n") is encoded as the JSON
+  member "source": "print(\"hello\\n\")\n".
