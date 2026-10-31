@@ -1,0 +1,19 @@
+{
+  "name": "task-01",
+  "specification": "spec.md",
+  "reference": {
+    "command": [
+      "/usr/bin/env",
+      "-i",
+      "LC_ALL=C.UTF-8",
+      "/usr/bin/jq",
+      "-c",
+      "-S",
+      "-M",
+      "walk(if type == \"array\" then unique else . end)"
+    ],
+    "cwd": "."
+  },
+  "input_format": "Exactly one valid JSON value using only null, booleans, bounded integers, strings, arrays, and objects, with the bounds and Unicode restrictions in the specification. No duplicate object property names or floating-point numbers.",
+  "timeout_seconds": 3.0
+}

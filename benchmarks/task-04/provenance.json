@@ -1,0 +1,20 @@
+{
+  "software": "cmark",
+  "version": "0.31.2",
+  "source_url": "https://github.com/commonmark/cmark/releases/tag/0.31.2",
+  "group": "utility",
+  "specification_sha256": "7987a3bcf0900f5bdfdf6edba214ba4fa55027f613529467395edfd37357b1d6",
+  "task_config_sha256": "6c90d26bebc35839550bb2891349aa174bcb90b7abb8e0f56960a2799a98a793",
+  "validation": "Not executed by agent; behavioral validation is user-managed.",
+  "source_archive": "../upstream/cmark-0.31.2.tar.gz",
+  "source_archive_sha256": "f9bc5ca38bcb0b727f0056100fac4d743e768872e3bacec7746de28f5700d697",
+  "download_url": "https://codeload.github.com/commonmark/cmark/tar.gz/refs/tags/0.31.2",
+  "reference_status": "built; not executed",
+  "upstream_license": "BSD-2-Clause (COPYING in source archive)",
+  "specification_attribution": "Derived from the CommonMark 0.31.2 specification by John MacFarlane, https://spec.commonmark.org/0.31.2/ ; this task specification is CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/ .",
+  "built_reference": "../../runs/reference-build/cmark/src/cmark",
+  "built_reference_sha256": "95f32cdb46680c502deb95b28832670c073084c1beaee50aff4b3c81ff2191f3",
+  "compiler": "g++ (GCC) 11.5.0 20240719 (Red Hat 11.5.0-14)",
+  "build_diagnostics": "../../runs/reference-build/cmark.build.log",
+  "build_system": "CMake 3.31.6, Release, BUILD_TESTING=OFF, BUILD_SHARED_LIBS=OFF"
+}

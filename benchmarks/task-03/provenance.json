@@ -1,0 +1,13 @@
+{
+  "software": "libxml2 / xmllint",
+  "version": "2.9.13-14.el9_8.5",
+  "source_url": "https://gnome.pages.gitlab.gnome.org/libxml2/xmllint.html",
+  "group": "utility",
+  "specification_sha256": "6d1fecfb62f00ac00eb3319635e8c8a10e5e51e7e5810b8d647f1064ee3dc40c",
+  "task_config_sha256": "a4065490b366abd5c45f7135172e1f15d882830b24aa32f39059336b576bdb1f",
+  "validation": "Not executed by agent; behavioral validation is user-managed.",
+  "reference_binary": "/usr/bin/xmllint",
+  "reference_binary_sha256": "8b65a0f16fb886faa87279df2a1ffe06ee210cffe5736c3447141f129d9679c8",
+  "reference_status": "installed; not executed",
+  "reference_environment": "Empty environment except LC_ALL=C.UTF-8, plus BC_LINE_LENGTH=0 for task-02."
+}

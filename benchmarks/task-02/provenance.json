@@ -1,0 +1,13 @@
+{
+  "software": "GNU bc",
+  "version": "1.07.1-14.el9",
+  "source_url": "https://www.gnu.org/software/bc/",
+  "group": "utility",
+  "specification_sha256": "d767b5076eba89cbb49d462b42d30c743084f7a17d6ee522f0f6b4b4858647c1",
+  "task_config_sha256": "ccc58884a083882e98ef9e874386cde38068945dc4a560ee0f36d7f9edb60f49",
+  "validation": "Not executed by agent; behavioral validation is user-managed.",
+  "reference_binary": "/usr/bin/bc",
+  "reference_binary_sha256": "7c68746ac1ead0cb3128af4bd16f295765d9abe520a823f21c837d919ed9d1b8",
+  "reference_status": "installed; not executed",
+  "reference_environment": "Empty environment except LC_ALL=C.UTF-8, plus BC_LINE_LENGTH=0 for task-02."
+}
